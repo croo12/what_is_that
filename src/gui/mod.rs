@@ -1,51 +1,33 @@
 use anyhow::Result;
 use eframe::egui;
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex};
 use tokio::task;
 use tokio::sync::oneshot;
 
 use crate::command_history::CommandHistory;
-use crate::command_executor;
-
-pub enum GuiMessage {
-    ClearInput,
-}
+use crate::shell_core;
 
 pub struct TemplateApp {
     input: String,
     output: Arc<Mutex<String>>,
     command_history: CommandHistory,
     shutdown_sender: Option<oneshot::Sender<()>>,
-    gui_sender: mpsc::Sender<GuiMessage>,
-    gui_receiver: mpsc::Receiver<GuiMessage>,
 }
 
 impl TemplateApp {
     pub fn new(output_arc: Arc<Mutex<String>>, shutdown_sender: oneshot::Sender<()>) -> Self {
-        let (gui_sender, gui_receiver) = mpsc::channel(100);
         Self {
             input: String::new(),
             output: output_arc,
             command_history: CommandHistory::new(),
             shutdown_sender: Some(shutdown_sender),
-            gui_sender,
-            gui_receiver,
         }
     }
 }
 
 impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Process GUI messages
-        while let Ok(message) = self.gui_receiver.try_recv() {
-            match message {
-                GuiMessage::ClearInput => {
-                    self.input.clear();
-                }
-            }
-        }
-
         egui::CentralPanel::default().show(ctx, |ui|
         {
             ui.heading("my_cli_tool GUI");
@@ -63,12 +45,11 @@ impl eframe::App for TemplateApp {
                     }
 
                     let output_arc = self.output.clone();
-                    let gui_sender_clone = self.gui_sender.clone();
                     task::spawn(async move {
-                        let command_output = command_executor::execute_command(&input_command).await;
+                        let command_output = shell_core::execute_shell_command(&input_command).await;
                         output_arc.lock().await.push_str(&command_output);
-                        let _ = gui_sender_clone.send(GuiMessage::ClearInput).await;
                     });
+                    self.input.clear(); // Clear immediately after spawning task
                 }
 
                 // History navigation
@@ -81,8 +62,7 @@ impl eframe::App for TemplateApp {
                         } else if i.key_pressed(egui::Key::ArrowDown) {
                             if let Some(cmd) = self.command_history.navigate_down() {
                                 self.input = cmd.to_owned();
-                            } 
-                            // Removed else { self.input.clear(); } from here
+                            }
                         }
                     });
                 }
@@ -94,12 +74,11 @@ impl eframe::App for TemplateApp {
                     }
 
                     let output_arc = self.output.clone();
-                    let gui_sender_clone = self.gui_sender.clone();
                     task::spawn(async move {
-                        let command_output = command_executor::execute_command(&input_command).await;
+                        let command_output = shell_core::execute_shell_command(&input_command).await;
                         output_arc.lock().await.push_str(&command_output);
-                        let _ = gui_sender_clone.send(GuiMessage::ClearInput).await;
                     });
+                    self.input.clear(); // Clear immediately after spawning task
                 }
 
                 if ui.button("Clear").clicked() {

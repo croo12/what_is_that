@@ -1,5 +1,5 @@
 mod gui;
-mod command_executor;
+mod shell_core;
 mod command_history;
 
 use eframe::egui;

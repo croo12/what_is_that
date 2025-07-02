@@ -12,3 +12,4 @@ egui = "0.28"
 eframe = { version = "0.28", features = ["wgpu", "glow"] }
 encoding_rs = "0.8.35"
 num-traits = "0.2"
+pnet = "0.35.0"
