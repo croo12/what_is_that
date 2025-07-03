@@ -1,175 +1,76 @@
-use tokio::process::Command;
-use tokio::io;
-use encoding_rs::Encoding;
-use std::path::Path;
+//! This module provides the core shell functionality, including command execution,
+//! directory management, and built-in commands like `ls`, `ping`, and `cd`.
 
-use pnet::packet::icmp::{echo_request, IcmpTypes, IcmpPacket};
-use pnet::packet::icmp::checksum;
-use pnet::packet::ip::IpNextHeaderProtocols;
-use pnet::transport::{transport_channel, TransportChannelType, icmp_packet_iter};
-use pnet::packet::Packet; // Import the Packet trait
-use std::net::ToSocketAddrs;
-use std::time::{Duration, Instant};
+use std::env;
+use std::path::PathBuf;
 
-pub async fn execute_shell_command(command_str: &str) -> String {
-    println!("[DEBUG] Executing shell command: {}", command_str);
+mod ls;
+mod ping;
+mod cd;
+mod external;
 
-    let parts: Vec<&str> = command_str.split_whitespace().collect();
-    let command_name = parts.first().unwrap_or(&"");
-    let args = &parts[1..];
-
-    match *command_name {
-        "ls" => ls_builtin(args).await,
-        "ping" => ping_builtin(args).await,
-        _ => execute_external_command(command_str).await,
-    }
+/// `ShellCore` manages the shell's state, including the current working directory
+/// and provides methods for executing commands.
+pub struct ShellCore {
+    current_dir: PathBuf,
 }
 
-async fn ls_builtin(args: &[&str]) -> String {
-    let path_str = args.first().unwrap_or(&".");
-    let path = Path::new(path_str);
-
-    if !path.exists() {
-        return format!("ls: cannot access '{}': No such file or directory\n", path_str);
-    }
-
-    if !path.is_dir() {
-        return format!("{}\n", path_str);
-    }
-
-    let mut output = String::new();
-    match tokio::fs::read_dir(path).await {
-        Ok(mut entries) => {
-            while let Some(entry) = entries.next_entry().await.unwrap() {
-                output.push_str(&format!("{}\n", entry.file_name().to_string_lossy()));
-            }
-        }
-        Err(e) => {
-            output.push_str(&format!("ls: error reading directory '{}': {}\n", path_str, e));
+impl ShellCore {
+    /// Creates a new `ShellCore` instance, initializing the current directory
+    /// to the current working directory of the process.
+    pub fn new() -> Self {
+        Self {
+            current_dir: env::current_dir().unwrap().canonicalize().unwrap(),
         }
     }
-    output
-}
 
-async fn ping_builtin(args: &[&str]) -> String {
-    if args.is_empty() {
-        return "Usage: ping <host>\n".to_string();
+    /// Returns the current working directory of the shell.
+    ///
+    /// # Returns
+    ///
+    /// A `PathBuf` representing the current directory.
+    pub fn get_current_dir(&self) -> PathBuf {
+        self.current_dir.clone()
     }
 
-    let host = args[0];
-    let ip_addr = match host.to_socket_addrs() {
-        Ok(mut addrs) => match addrs.next() {
-            Some(addr) => addr.ip(),
-            None => return format!("ping: unknown host {}\n", host),
-        },
-        Err(e) => return format!("ping: failed to resolve host {}: {}\n", host, e),
-    };
+    /// Executes a given shell command.
+    ///
+    /// This function parses the command string, identifies built-in commands
+    /// (`ls`, `ping`, `cd`), and executes them. If the command is not built-in,
+    /// it attempts to execute it as an external system command.
+    ///
+    /// # Arguments
+    ///
+    /// * `command_str` - A string slice representing the command to execute.
+    ///
+    /// # Returns
+    ///
+    /// A `String` containing the output of the executed command.
+    pub async fn execute_shell_command(&mut self, command_str: &str) -> String {
+        println!("[DEBUG] Executing shell command: {}", command_str);
 
-    let (mut tx, mut rx) = match transport_channel(
-        4096, // Buffer size
-        TransportChannelType::Layer3(IpNextHeaderProtocols::Icmp),
-    ) {
-        Ok((tx, rx)) => (tx, rx),
-        Err(e) => return format!("ping: failed to create transport channel: {}\n", e),
-    };
+        let parts: Vec<&str> = command_str.split_whitespace().collect();
+        let command_name = parts.first().unwrap_or(&"");
+        let args = &parts[1..];
 
-    let mut echo_packet = echo_request::MutableEchoRequestPacket::owned(vec![0; 16]).unwrap();
-    echo_packet.set_identifier(1);
-    echo_packet.set_sequence_number(1);
-    echo_packet.set_icmp_type(IcmpTypes::EchoRequest.into()); // Corrected IcmpTypes::Echo
-    
-    // Create an IcmpPacket from the MutableEchoRequestPacket for checksum calculation
-    let icmp_packet = IcmpPacket::new(echo_packet.packet()).unwrap();
-    echo_packet.set_checksum(checksum(&icmp_packet)); // Use imported checksum
-
-    let start_time = Instant::now();
-
-    match tx.send_to(echo_packet.to_immutable(), ip_addr) {
-        Ok(_) => {},
-        Err(e) => return format!("ping: failed to send packet: {}\n", e),
-    }
-
-    // Use tokio::task::spawn_blocking to run the blocking iter.next() call
-    let received_addr = match tokio::time::timeout(Duration::from_secs(4), tokio::task::spawn_blocking(move || {
-        let mut iter = icmp_packet_iter(&mut rx);
-        loop {
-            match iter.next() { // Correctly handle Result<...>
-                Ok((packet, addr)) => {
-                    if addr == ip_addr && packet.get_icmp_type() == IcmpTypes::EchoReply {
-                        return Some(addr); // Return only the address
-                    }
-                },
-                Err(e) => {
-                    // Handle error from iter.next()
-                    eprintln!("ping: error in iter.next(): {}", e);
-                    return None;
-                },
-            }
-            // Small sleep to prevent busy-waiting in the blocking thread
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    })).await {
-        Ok(Ok(Some(addr))) => addr,
-        Ok(Ok(None)) => return "ping: Request timed out (no packet received).\n".to_string(),
-        Ok(Err(e)) => return format!("ping: error in blocking task: {}\n", e),
-        Err(_) => return "ping: Request timed out (blocking task).\n".to_string(),
-    };
-
-    let duration = start_time.elapsed();
-    format!("Reply from {}: time={:?}\n", received_addr, duration)
-}
-
-async fn execute_external_command(command_str: &str) -> String {
-    println!("[DEBUG] Executing external command: {}", command_str);
-
-    let (shell, shell_arg) = if cfg!(windows) {
-        ("cmd.exe", "/C")
-    } else {
-        ("sh", "-c")
-    };
-
-    let output_result = Command::new(shell)
-        .arg(shell_arg)
-        .arg(command_str)
-        .output()
-        .await;
-
-    match output_result {
-        Ok(output) => {
-            let decoder = if cfg!(windows) {
-                Encoding::for_label(b"windows-949").unwrap()
-            } else {
-                Encoding::for_label(b"utf-8").unwrap()
-            };
-            let (decoded_stdout, _, _) = decoder.decode(&output.stdout);
-            let (decoded_stderr, _, _) = decoder.decode(&output.stderr);
-
-            if !output.status.success() {
-                format!(
-                    "Command failed with exit code: {}\nStdout:\n{}\nStderr:\n{}",
-                    output.status.code().unwrap_or(-1),
-                    decoded_stdout,
-                    decoded_stderr
-                )
-            } else {
-                format!("{}{}", decoded_stdout, decoded_stderr)
-            }
-        }
-        Err(e) => {
-            format!("Error executing command: {}\n", e)
+        match *command_name {
+            "ls" => ls::ls_builtin(&self.current_dir, args).await,
+            "ping" => ping::ping_builtin(args).await,
+            "cd" => cd::cd_builtin(&mut self.current_dir, args).await,
+            _ => external::execute_external_command(&self.current_dir, command_str).await,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{execute_shell_command, ls_builtin};
+    use super::{ShellCore};
     use tokio::io;
-    use std::fs;
 
     #[tokio::test]
     async fn test_ls_builtin_current_dir() -> io::Result<()> {
-        let output = ls_builtin(&[]).await;
+        let shell_core = ShellCore::new();
+        let output = super::ls::ls_builtin(&shell_core.current_dir, &[]).await;
         println!("Test Output: {}", output);
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
@@ -178,7 +79,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ls_builtin_nonexistent_dir() -> io::Result<()> {
-        let output = ls_builtin(&["nonexistent_dir_123"]).await;
+        let shell_core = ShellCore::new();
+        let output = super::ls::ls_builtin(&shell_core.current_dir, &["nonexistent_dir_123"]).await;
         println!("Test Output: {}", output);
         assert!(output.contains("No such file or directory"));
         Ok(())
@@ -186,7 +88,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_shell_command_ls() -> io::Result<()> {
-        let output = execute_shell_command("ls").await;
+        let mut shell_core = ShellCore::new();
+        let output = shell_core.execute_shell_command("ls").await;
         println!("Test Output: {}", output);
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
@@ -195,12 +98,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_shell_command_echo() -> io::Result<()> {
+        let mut shell_core = ShellCore::new();
         let command = if cfg!(windows) {
             "echo Hello from OS!"
         } else {
             "echo Hello from OS!"
         };
-        let output = execute_shell_command(command).await;
+        let output = shell_core.execute_shell_command(command).await;
         println!("Test Output: {}", output);
         assert!(output.contains("Hello from OS!"));
         Ok(())
@@ -208,16 +112,50 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_shell_command_invalid() -> io::Result<()> {
+        let mut shell_core = ShellCore::new();
         let command = "nonexistent_command_12345";
-        let output = execute_shell_command(command).await;
+        let output = shell_core.execute_shell_command(command).await;
         println!("Test Output: {}", output);
         assert!(output.contains("Error executing command:") || output.contains("not found") || output.contains("command not found") || output.contains("실행할 수 있는 프로그램"));
         Ok(())
     }
 
+    #[tokio::test]
+    async fn test_cd_builtin() -> io::Result<()> {
+        let mut shell_core = ShellCore::new();
+        let initial_dir = shell_core.current_dir.canonicalize().unwrap();
+
+        // Test cd to a valid directory
+        shell_core.execute_shell_command("cd src").await;
+        assert_eq!(shell_core.current_dir, initial_dir.join("src").canonicalize().unwrap());
+        assert_eq!(shell_core.get_current_dir(), initial_dir.join("src").canonicalize().unwrap());
+
+        // Test cd back to the parent directory
+        shell_core.execute_shell_command("cd ..").await;
+        assert_eq!(shell_core.current_dir, initial_dir);
+        assert_eq!(shell_core.get_current_dir(), initial_dir);
+
+        // Test cd to a non-existent directory
+        let output = shell_core.execute_shell_command("cd nonexistent_dir_123").await;
+        assert!(output.contains("Not a directory"));
+        assert_eq!(shell_core.current_dir, initial_dir);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_current_dir() -> io::Result<()> {
+        let shell_core = ShellCore::new();
+        let expected_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(shell_core.get_current_dir(), expected_dir);
+        Ok(())
+    }
+
+    // This test is ignored because it requires administrator privileges to create raw sockets.
     // #[tokio::test]
     // async fn test_ping_builtin() -> io::Result<()> {
-    //     let output = execute_shell_command("ping google.com").await;
+    //     let shell_core = ShellCore::new();
+    //     let output = super::ping::ping_builtin("google.com").await;
     //     println!("Test Output: {}", output);
     //     assert!(output.contains("Reply from"));
     //     Ok(())

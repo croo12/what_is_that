@@ -1,3 +1,7 @@
+//! This is the main entry point for the `my_cli_tool` graphical user interface (GUI) application.
+//! It sets up the eframe application, initializes the shell core and command history,
+//! and handles the main event loop for the GUI.
+
 mod gui;
 mod shell_core;
 mod command_history;
@@ -8,6 +12,16 @@ use tokio::sync::Mutex;
 use tokio::task;
 use tokio::sync::oneshot;
 
+use crate::shell_core::ShellCore;
+
+/// Sets up custom fonts for the egui context.
+///
+/// This function loads a Korean font (Malgun Gothic Bold) and sets it as the
+/// primary proportional font and a fallback for monospace fonts.
+///
+/// # Arguments
+///
+/// * `ctx` - The `egui::Context` to apply the fonts to.
 fn setup_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
@@ -26,43 +40,58 @@ fn setup_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
+/// The main entry point of the application.
+///
+/// This asynchronous function initializes the eframe native options, sets up shared state
+/// for the GUI (output, shell core), and runs the eframe application.
+/// It also spawns a background task to handle shutdown signals.
+///
+/// # Returns
+///
+/// A `eframe::Result<()>` indicating the success or failure of the application.
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
+    // Configure eframe native options, such as the window size.
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 600.0]),
         ..Default::default()
     };
 
+    // Create shared state for the output display and the shell core.
+    // Arc (Atomic Reference Count) allows multiple owners, and Mutex provides safe interior mutability.
     let output_arc = Arc::new(Mutex::new(String::new()));
+    let shell_core_arc = Arc::new(Mutex::new(ShellCore::new()));
 
-    let output_arc_clone_for_task = output_arc.clone();
+    // Create a oneshot channel for sending a shutdown signal to background tasks.
+    let (tx, rx) = oneshot::channel();
 
-    let (tx, rx) = oneshot::channel(); // Channel for shutdown signal
-
+    // Run the eframe application.
     let app_result = eframe::run_native(
-        "my_cli_tool GUI",
+        "my_cli_tool GUI", // The title of the application window.
         options,
         Box::new(move |cc| {
+            // Set up custom fonts for the GUI context.
             setup_fonts(&cc.egui_ctx);
-            let egui_ctx_for_task = cc.egui_ctx.clone(); // Clone the actual context
 
+            // Spawn a background task to listen for the shutdown signal.
+            // This task will exit when the `rx` receiver receives a message.
             task::spawn(async move {
-                let mut rx = rx; // Take ownership of the receiver
+                let mut rx = rx; // Take ownership of the receiver.
                 loop {
                     tokio::select! {
                         _ = &mut rx => {
-                            // Received shutdown signal
+                            // Received shutdown signal, break the loop.
                             break;
                         }
                         _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                            // No longer reading from a persistent session, so no output to read here
-                            // The output is updated directly by the command execution task
+                            // Periodically wake up to check for shutdown, but do no other work.
                         }
                     }
                 }
             });
 
-            Ok(Box::new(gui::TemplateApp::new(output_arc.clone(), tx)))
+            // Create and return the main GUI application instance.
+            Ok(Box::new(gui::TemplateApp::new(output_arc.clone(), shell_core_arc.clone(), tx)))
         }),
     );
 
