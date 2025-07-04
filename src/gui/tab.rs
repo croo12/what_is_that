@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task;
 use std::path::PathBuf;
+use chrono::Local;
 
 use crate::command_history::CommandHistory;
 use crate::shell_core::ShellCore;
@@ -48,14 +49,50 @@ impl ShellTab {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         // Asynchronously update current_dir_display
         let shell_core_arc_clone = self.shell_core.clone();
-        let current_dir_display_arc_clone = self.current_dir_display.clone();
+        let current_dir_display_arc_clone_for_spawn = self.current_dir_display.clone();
         task::spawn(async move {
             let shell_core = shell_core_arc_clone.lock().await;
             let new_dir = shell_core.get_current_dir().display().to_string();
-            *current_dir_display_arc_clone.lock().await = new_dir;
+            *current_dir_display_arc_clone_for_spawn.lock().await = new_dir;
         });
 
         ui.label(format!("Current Directory: {}", self.current_dir_display.try_lock().map(|s| s.clone()).unwrap_or_else(|_| "(Loading...)".to_string())));
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(10.0);
+
+        // Scrollable area for displaying command output
+        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
+            let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_| "(Output busy...)".to_string());
+            ui_scroll.label(output_str);
+        });
+
+        // Display suggestions
+        let mut should_clear_suggestions = false;
+        let suggestions_guard = self.suggestions.try_lock();
+        let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
+
+        if let (Ok(suggestions), Ok(active_suggestion_index)) = (suggestions_guard, active_suggestion_index_guard) {
+            if !suggestions.is_empty() && self.input.len() > 0 {
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    for (i, suggestion) in suggestions.iter().enumerate() {
+                        let is_active = *active_suggestion_index == Some(i);
+                        if ui.selectable_label(is_active, suggestion).clicked() {
+                            self.input = suggestion.clone();
+                            should_clear_suggestions = true;
+                            // active_suggestion_index = None; // This needs to be set after the loop
+                        }
+                    }
+                });
+            }
+        }
+        
+        if should_clear_suggestions {
+            self.suggestions.try_lock().unwrap().clear();
+            *self.active_suggestion_index.try_lock().unwrap() = None;
+        }
 
         ui.horizontal(|ui| {
             ui.label("Command:");
@@ -65,12 +102,12 @@ impl ShellTab {
                 // Generate suggestions when input changes
                 let input_clone = self.input.clone();
                 let autocompleter_clone = self.autocompleter.clone();
-                let current_dir_display_clone = self.current_dir_display.clone();
+                let current_dir_display_arc_clone_for_suggestions = self.current_dir_display.clone();
                 let suggestions_arc_clone = self.suggestions.clone();
                 let active_suggestion_index_arc_clone = self.active_suggestion_index.clone();
 
                 task::spawn(async move {
-                    let current_dir = current_dir_display_clone.lock().await.clone();
+                    let current_dir = current_dir_display_arc_clone_for_suggestions.lock().await.clone();
                     let current_dir_path = PathBuf::from(current_dir);
                     let new_suggestions = autocompleter_clone.get_suggestions(&input_clone, &current_dir_path).await;
                     *suggestions_arc_clone.lock().await = new_suggestions;
@@ -149,41 +186,6 @@ impl ShellTab {
                 });
             }
         });
-
-        // Display suggestions
-        let mut should_clear_suggestions = false;
-        let suggestions_guard = self.suggestions.try_lock();
-        let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
-
-        if let (Ok(suggestions), Ok(active_suggestion_index)) = (suggestions_guard, active_suggestion_index_guard) {
-            if !suggestions.is_empty() && self.input.len() > 0 {
-                ui.group(|ui| {
-                    ui.set_width(ui.available_width());
-                    for (i, suggestion) in suggestions.iter().enumerate() {
-                        let is_active = *active_suggestion_index == Some(i);
-                        if ui.selectable_label(is_active, suggestion).clicked() {
-                            self.input = suggestion.clone();
-                            should_clear_suggestions = true;
-                            // active_suggestion_index = None; // This needs to be set after the loop
-                        }
-                    }
-                });
-            }
-        }
-        
-        if should_clear_suggestions {
-            self.suggestions.try_lock().unwrap().clear();
-            *self.active_suggestion_index.try_lock().unwrap() = None;
-        }
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(10.0);
-
-        egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
-            let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_| "(Output busy...)".to_string());
-            ui_scroll.label(output_str);
-        });
     }
 
     /// Executes the command currently in the input field.
@@ -203,7 +205,8 @@ impl ShellTab {
             {
                 let mut output = output_arc.lock().await;
                 let current_dir = current_dir_display_arc.lock().await;
-                output.push_str(&format!("[{}] $ {}\n", current_dir, &input_command));
+                let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                output.push_str(&format!("\n[{}] {} $ {}\n", timestamp, current_dir, &input_command));
             }
 
             let command_output = {
