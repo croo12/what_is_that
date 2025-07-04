@@ -4,12 +4,10 @@
 use std::env;
 use std::path::PathBuf;
 
-mod ls;
-mod ping;
-mod cd;
-mod external;
+pub mod builtins;
+pub mod command_executor;
 pub mod autocompletion;
-mod open;
+pub mod external;
 
 /// `ShellCore` manages the shell's state, including the current working directory
 /// and provides methods for executing commands.
@@ -49,19 +47,7 @@ impl ShellCore {
     ///
     /// A `String` containing the output of the executed command.
     pub async fn execute_shell_command(&mut self, command_str: &str) -> String {
-        println!("[DEBUG] Executing shell command: {}", command_str);
-
-        let parts: Vec<&str> = command_str.split_whitespace().collect();
-        let command_name = parts.first().unwrap_or(&"");
-        let args = &parts[1..];
-
-        match *command_name {
-            "ls" => ls::ls_builtin(&self.current_dir, args).await,
-            "ping" => ping::ping_builtin(args).await,
-            "cd" => cd::cd_builtin(&mut self.current_dir, args).await,
-            "open" => open::open_builtin(&self.current_dir, args).await,
-            _ => external::execute_external_command(&self.current_dir, command_str).await,
-        }
+        command_executor::execute_shell_command(&mut self.current_dir, command_str).await
     }
 }
 
@@ -73,7 +59,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_builtin_current_dir() -> io::Result<()> {
         let shell_core = ShellCore::new();
-        let output = super::ls::ls_builtin(&shell_core.current_dir, &[]).await;
+        let output = super::builtins::ls::ls_builtin(&shell_core.current_dir, &[]).await;
         println!("Test Output: {}", output);
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
@@ -83,7 +69,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_builtin_nonexistent_dir() -> io::Result<()> {
         let shell_core = ShellCore::new();
-        let output = super::ls::ls_builtin(&shell_core.current_dir, &["nonexistent_dir_123"]).await;
+        let output = super::builtins::ls::ls_builtin(&shell_core.current_dir, &["nonexistent_dir_123"]).await;
         println!("Test Output: {}", output);
         assert!(output.contains("No such file or directory"));
         Ok(())
@@ -159,7 +145,7 @@ mod tests {
     #[ignore]
     async fn test_ping_builtin() -> io::Result<()> {
         let _shell_core = ShellCore::new();
-        let output = super::ping::ping_builtin(&["google.com"]).await;
+        let output = super::builtins::ping::ping_builtin(&["google.com"]).await;
         println!("Test Output: {}", output);
         assert!(output.contains("Reply from"));
         Ok(())
