@@ -3,9 +3,10 @@
 
 /// `CommandHistory` stores a list of commands entered by the user
 /// and keeps track of the current position when navigating through the history.
+#[derive(Clone)]
 pub struct CommandHistory {
     /// A vector storing the history of commands as strings.
-    history: Vec<String>,
+    pub history: Vec<String>,
     /// The current index in the history when navigating. `None` if not navigating.
     current_index: Option<usize>,
 }

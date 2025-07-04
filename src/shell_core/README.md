@@ -15,6 +15,8 @@ To provide a cross-platform, GUI-based command-line experience by implementing s
 ## Built-in Commands Implemented:
 
 -   `ls`: Lists the contents of a directory.
+-   `cd`: Changes the current working directory.
+-   `ping`: Sends ICMP echo requests to network hosts.
 
 ## Dependencies
 

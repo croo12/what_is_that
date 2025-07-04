@@ -8,6 +8,7 @@ mod ls;
 mod ping;
 mod cd;
 mod external;
+pub mod autocompletion;
 
 /// `ShellCore` manages the shell's state, including the current working directory
 /// and provides methods for executing commands.
@@ -152,12 +153,13 @@ mod tests {
     }
 
     // This test is ignored because it requires administrator privileges to create raw sockets.
-    // #[tokio::test]
-    // async fn test_ping_builtin() -> io::Result<()> {
-    //     let shell_core = ShellCore::new();
-    //     let output = super::ping::ping_builtin("google.com").await;
-    //     println!("Test Output: {}", output);
-    //     assert!(output.contains("Reply from"));
-    //     Ok(())
-    // }
+    #[tokio::test]
+    #[ignore]
+    async fn test_ping_builtin() -> io::Result<()> {
+        let _shell_core = ShellCore::new();
+        let output = super::ping::ping_builtin(&["google.com"]).await;
+        println!("Test Output: {}", output);
+        assert!(output.contains("Reply from"));
+        Ok(())
+    }
 }

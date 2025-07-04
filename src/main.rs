@@ -7,12 +7,8 @@ mod shell_core;
 mod command_history;
 
 use eframe::egui;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::task;
 use tokio::sync::oneshot;
-
-use crate::shell_core::ShellCore;
+use tokio::task;
 
 /// Sets up custom fonts for the egui context.
 ///
@@ -57,11 +53,6 @@ async fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    // Create shared state for the output display and the shell core.
-    // Arc (Atomic Reference Count) allows multiple owners, and Mutex provides safe interior mutability.
-    let output_arc = Arc::new(Mutex::new(String::new()));
-    let shell_core_arc = Arc::new(Mutex::new(ShellCore::new()));
-
     // Create a oneshot channel for sending a shutdown signal to background tasks.
     let (tx, rx) = oneshot::channel();
 
@@ -91,7 +82,7 @@ async fn main() -> eframe::Result<()> {
             });
 
             // Create and return the main GUI application instance.
-            Ok(Box::new(gui::TemplateApp::new(output_arc.clone(), shell_core_arc.clone(), tx)))
+            Ok(Box::new(gui::GuiApp::new(tx)))
         }),
     );
 

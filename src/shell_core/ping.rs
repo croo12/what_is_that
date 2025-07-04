@@ -18,7 +18,7 @@ pub async fn ping_builtin(args: &[&str]) -> String {
     let host = args[0];
     // Clean up host string to remove http(s):// prefixes and paths
     let cleaned_host = host.trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("");
-    let ip_addr = match cleaned_host.to_socket_addrs() {
+    let ip_addr = match (cleaned_host, 80).to_socket_addrs() {
         Ok(mut addrs) => match addrs.next() {
             Some(addr) => addr.ip(),
             None => return format!("ping: unknown host {}\n", host),
