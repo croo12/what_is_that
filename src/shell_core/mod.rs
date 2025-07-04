@@ -119,6 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cd_builtin() -> io::Result<()> {
+        std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
         let mut shell_core = ShellCore::new();
         let initial_dir = shell_core.current_dir.canonicalize().unwrap();
 

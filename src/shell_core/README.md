@@ -23,3 +23,11 @@ To provide a cross-platform, GUI-based command-line experience by implementing s
 ## Dependencies
 
 This module relies on `tokio` for asynchronous operations and `encoding_rs` for character encoding handling.
+
+## Current State
+
+The `shell_core` module has been refactored into smaller, more manageable sub-modules for improved organization and maintainability. It now includes:
+
+*   **`builtins/`:** Contains individual implementations of built-in commands (`cd.rs`, `ls.rs`, `ping.rs`, `open.rs`).
+*   **`command_executor.rs`:** Encapsulates the logic for dispatching commands to either built-in implementations or external system commands.
+*   **`autocompletion.rs`:** Provides context-aware command and path suggestions.

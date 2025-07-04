@@ -1,18 +1,25 @@
 # GUI Module
 
-This module contains the graphical user interface (GUI) implementation for `my_cli_tool`.
+This module defines the graphical user interface (GUI) for the `my_cli_tool` application. It is built using the `egui` and `eframe` crates, providing a cross-platform and interactive shell experience.
 
 ## Purpose
 
-The primary purpose of this module is to provide an interactive and visually appealing interface for users to interact with the underlying command execution logic. It abstracts away the complexities of the command-line interface, offering a more intuitive experience.
+To provide a user-friendly and visually interactive front-end for the underlying shell core. It handles user input, displays command output, and manages the overall visual presentation and user interaction flow.
 
-## Components
+## Current State
 
--   **`App` struct:** Implements the `eframe::App` trait, defining the main structure and behavior of the GUI application.
--   **UI Layout:** Handles the arrangement of widgets such as input fields, buttons, and output display areas.
--   **Event Handling:** Processes user interactions (e.g., button clicks, text input) and triggers corresponding actions.
--   **Command Execution Integration:** Orchestrates the execution of external commands and displays their output within the GUI.
+The GUI currently features:
 
-## Dependencies
+*   **Multi-Tabbed Interface:** Allows users to manage multiple independent shell sessions simultaneously.
+*   **Timestamped Command Output:** Displays command output with timestamps for improved readability and context.
+*   **Command Input at Bottom:** The command input field is positioned at the bottom of the terminal area, mimicking traditional CLI layouts.
+*   **Context-Aware Autocompletion Display:** Dynamically shows suggestions for commands and file paths as the user types, with keyboard navigation support.
 
-This module heavily relies on the `egui` and `eframe` crates for rendering the user interface and managing the application window.
+## To-Dos
+
+*   **Syntax Highlighting for Output:** Implement syntax highlighting for different types of command output (e.g., JSON, XML, code snippets).
+*   **Clickable Links in Output:** Make URLs and file paths in the output clickable.
+*   **Customizable Themes:** Allow users to select different color themes for the GUI.
+*   **Resizable Panes:** Enable resizing of the input and output areas.
+*   **Improved Scrollbar Experience:** Enhance the scrollbar for very long outputs.
+*   **Settings/Preferences UI:** Add a dedicated UI for configuring application settings.
