@@ -55,14 +55,18 @@ impl ShellCore {
 mod tests {
     use super::{ShellCore};
     use tokio::io;
+    use std::path::PathBuf;
+    use std::env;
 
     #[tokio::test]
     async fn test_ls_builtin_current_dir() -> io::Result<()> {
-        let shell_core = ShellCore::new();
+        let mut shell_core = ShellCore::new();
+        shell_core.current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).canonicalize().unwrap();
         let output = super::builtins::ls::ls_builtin(&shell_core.current_dir, &[]).await;
-        println!("Test Output: {}", output);
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
+        assert!(output.contains("lib"));
+        assert!(output.contains("README.md"));
         Ok(())
     }
 
@@ -78,10 +82,14 @@ mod tests {
     #[tokio::test]
     async fn test_execute_shell_command_ls() -> io::Result<()> {
         let mut shell_core = ShellCore::new();
+        shell_core.current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).canonicalize().unwrap();
+        println!("DEBUG: shell_core.current_dir = {:?}", shell_core.current_dir);
         let output = shell_core.execute_shell_command("ls").await;
         println!("Test Output: {}", output);
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
+        assert!(output.contains("lib"));
+        assert!(output.contains("README.md"));
         Ok(())
     }
 
@@ -134,9 +142,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_current_dir() -> io::Result<()> {
+        let initial_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
         let shell_core = ShellCore::new();
-        let expected_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
-        assert_eq!(shell_core.get_current_dir(), expected_dir);
+        assert_eq!(shell_core.get_current_dir(), initial_dir);
         Ok(())
     }
 
