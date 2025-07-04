@@ -136,7 +136,7 @@ mod tests {
     async fn test_get_current_dir() -> io::Result<()> {
         let shell_core = ShellCore::new();
         let expected_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
-        assert_eq!(shell_core.get_current_dir().canonicalize().unwrap(), expected_dir);
+        assert_eq!(shell_core.get_current_dir(), expected_dir);
         Ok(())
     }
 
