@@ -19,8 +19,8 @@ pub struct ShellTab {
     command_history: CommandHistory,
     current_dir_display: Arc<Mutex<String>>,
     autocompleter: Autocompleter,
-    suggestions: Vec<String>,
-    active_suggestion_index: Option<usize>,
+    suggestions: Arc<Mutex<Vec<String>>>,
+    active_suggestion_index: Arc<Mutex<Option<usize>>>,
 }
 
 impl ShellTab {
@@ -39,8 +39,8 @@ impl ShellTab {
             command_history,
             current_dir_display: Arc::new(Mutex::new(current_dir)),
             autocompleter,
-            suggestions: Vec::new(),
-            active_suggestion_index: None,
+            suggestions: Arc::new(Mutex::new(Vec::new())),
+            active_suggestion_index: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -63,16 +63,38 @@ impl ShellTab {
 
             if response.changed() {
                 // Generate suggestions when input changes
-                let current_dir = self.current_dir_display.try_lock().map(|s| PathBuf::from(s.clone())).unwrap_or_else(|_| PathBuf::from("."));
-                self.suggestions = self.autocompleter.get_suggestions(&self.input, &current_dir);
-                self.active_suggestion_index = None;
+                let input_clone = self.input.clone();
+                let autocompleter_clone = self.autocompleter.clone();
+                let current_dir_display_clone = self.current_dir_display.clone();
+                let suggestions_arc_clone = self.suggestions.clone();
+                let active_suggestion_index_arc_clone = self.active_suggestion_index.clone();
+
+                task::spawn(async move {
+                    let current_dir = current_dir_display_clone.lock().await.clone();
+                    let current_dir_path = PathBuf::from(current_dir);
+                    let new_suggestions = autocompleter_clone.get_suggestions(&input_clone, &current_dir_path).await;
+                    *suggestions_arc_clone.lock().await = new_suggestions;
+                    *active_suggestion_index_arc_clone.lock().await = None;
+                });
             }
 
             if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                if let Some(index) = self.active_suggestion_index {
-                    if let Some(suggestion) = self.suggestions.get(index) {
-                        self.input = suggestion.clone();
+                let selected_suggestion = {
+                    let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
+                    let suggestions_guard = self.suggestions.try_lock();
+
+                    if let (Ok(active_suggestion_index), Ok(suggestions)) = (active_suggestion_index_guard, suggestions_guard) {
+                        if let Some(index) = *active_suggestion_index {
+                            suggestions.get(index).map(|s| s.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
                     }
+                };
+                if let Some(suggestion) = selected_suggestion {
+                    self.input = suggestion;
                 }
                 self.execute_command();
                 response.request_focus();
@@ -81,29 +103,35 @@ impl ShellTab {
             if response.has_focus() {
                 ui.input(|i| {
                     if i.key_pressed(egui::Key::ArrowUp) {
-                        if !self.suggestions.is_empty() {
-                            self.active_suggestion_index = Some(match self.active_suggestion_index {
-                                Some(index) => if index > 0 { index - 1 } else { self.suggestions.len() - 1 },
-                                None => self.suggestions.len() - 1,
+                        let mut active_suggestion_index = self.active_suggestion_index.try_lock().unwrap();
+                        let suggestions = self.suggestions.try_lock().unwrap();
+                        if !suggestions.is_empty() {
+                            *active_suggestion_index = Some(match *active_suggestion_index {
+                                Some(index) => if index > 0 { index - 1 } else { suggestions.len() - 1 },
+                                None => suggestions.len() - 1,
                             });
                         } else if let Some(cmd) = self.command_history.navigate_up() {
                             self.input = cmd.to_owned();
                         }
                     } else if i.key_pressed(egui::Key::ArrowDown) {
-                        if !self.suggestions.is_empty() {
-                            self.active_suggestion_index = Some(match self.active_suggestion_index {
-                                Some(index) => if index < self.suggestions.len() - 1 { index + 1 } else { 0 },
+                        let mut active_suggestion_index = self.active_suggestion_index.try_lock().unwrap();
+                        let suggestions = self.suggestions.try_lock().unwrap();
+                        if !suggestions.is_empty() {
+                            *active_suggestion_index = Some(match *active_suggestion_index {
+                                Some(index) => if index < suggestions.len() - 1 { index + 1 } else { 0 },
                                 None => 0,
                             });
                         } else if let Some(cmd) = self.command_history.navigate_down() {
                             self.input = cmd.to_owned();
                         }
                     } else if i.key_pressed(egui::Key::Tab) {
-                        if let Some(index) = self.active_suggestion_index {
-                            if let Some(suggestion) = self.suggestions.get(index) {
+                        let mut active_suggestion_index = self.active_suggestion_index.try_lock().unwrap();
+                        let suggestions = self.suggestions.try_lock().unwrap();
+                        if let Some(index) = *active_suggestion_index {
+                            if let Some(suggestion) = suggestions.get(index) {
                                 self.input = suggestion.clone();
-                                self.suggestions.clear(); // Clear suggestions after selection
-                                self.active_suggestion_index = None;
+                                self.suggestions.try_lock().unwrap().clear(); // Clear suggestions after selection
+                                *active_suggestion_index = None;
                             }
                         }
                     }
@@ -124,21 +152,28 @@ impl ShellTab {
 
         // Display suggestions
         let mut should_clear_suggestions = false;
-        if !self.suggestions.is_empty() && self.input.len() > 0 {
-            ui.group(|ui| {
-                ui.set_width(ui.available_width());
-                for (i, suggestion) in self.suggestions.iter().enumerate() {
-                    let is_active = self.active_suggestion_index == Some(i);
-                    if ui.selectable_label(is_active, suggestion).clicked() {
-                        self.input = suggestion.clone();
-                        should_clear_suggestions = true;
-                        self.active_suggestion_index = None;
+        let suggestions_guard = self.suggestions.try_lock();
+        let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
+
+        if let (Ok(suggestions), Ok(active_suggestion_index)) = (suggestions_guard, active_suggestion_index_guard) {
+            if !suggestions.is_empty() && self.input.len() > 0 {
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    for (i, suggestion) in suggestions.iter().enumerate() {
+                        let is_active = *active_suggestion_index == Some(i);
+                        if ui.selectable_label(is_active, suggestion).clicked() {
+                            self.input = suggestion.clone();
+                            should_clear_suggestions = true;
+                            // active_suggestion_index = None; // This needs to be set after the loop
+                        }
                     }
-                }
-            });
+                });
+            }
         }
+        
         if should_clear_suggestions {
-            self.suggestions.clear();
+            self.suggestions.try_lock().unwrap().clear();
+            *self.active_suggestion_index.try_lock().unwrap() = None;
         }
 
         ui.add_space(10.0);
@@ -190,7 +225,7 @@ impl ShellTab {
         });
 
         self.input.clear();
-        self.suggestions.clear(); // Clear suggestions after command execution
-        self.active_suggestion_index = None;
+        self.suggestions.try_lock().unwrap().clear(); // Clear suggestions after command execution
+        *self.active_suggestion_index.try_lock().unwrap() = None;
     }
 }
