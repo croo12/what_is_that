@@ -9,6 +9,7 @@ mod ping;
 mod cd;
 mod external;
 pub mod autocompletion;
+mod open;
 
 /// `ShellCore` manages the shell's state, including the current working directory
 /// and provides methods for executing commands.
@@ -58,6 +59,7 @@ impl ShellCore {
             "ls" => ls::ls_builtin(&self.current_dir, args).await,
             "ping" => ping::ping_builtin(args).await,
             "cd" => cd::cd_builtin(&mut self.current_dir, args).await,
+            "open" => open::open_builtin(&self.current_dir, args).await,
             _ => external::execute_external_command(&self.current_dir, command_str).await,
         }
     }
