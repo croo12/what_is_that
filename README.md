@@ -10,6 +10,12 @@ Initially, `my_cli_tool` was a simple Rust CLI application that greeted a specif
 
 The project is now transitioning to a GUI application using the `egui` framework. This will provide a more user-friendly and visually interactive experience for executing commands.
 
+### Goal: Native CLI Experience within GUI
+
+A key objective is to evolve the GUI application to feel more like a native command-line interface, leveraging underlying operating system functionalities directly where appropriate, rather than relying on generic wrappers. This will enhance performance, integration, and the overall 'native' feel of the shell.
+
+For example, the `open` command will be refactored to directly invoke the OS's default program launcher (`start` on Windows, `open` on macOS, `xdg-open` on Linux) instead of using a generic process spawn.
+
 ## Planned Features
 
 To achieve this, the following features will be implemented:
@@ -49,12 +55,12 @@ Implements the built-in `cd` command for changing the current working directory.
 현재 작업 디렉토리를 변경하는 내장 `cd` 명령을 구현합니다.
 
 #### `src/shell_core/external.rs`
-Handles the execution of external system commands that are not built into the shell.
+Han dles the execution of external system commands that are not built into the shell.
 셸에 내장되지 않은 외부 시스템 명령의 실행을 처리합니다.
 
 ### `src/command_history/mod.rs`
 Manages the history of commands entered by the user, allowing for navigation and recall of previous commands.
-사용자가 입력한 명령의 기록을 관리하여 이전 명령을 탐색하고 불러올 수 있도록 합니다.
+사용자가 입력한 명령의 기록을 관리하여 이전 명령을 탐색하고 불러올 수 있도록 합니다。
 
 ## Technical Approach
 
