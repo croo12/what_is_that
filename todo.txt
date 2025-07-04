@@ -1,0 +1,22 @@
+# Project To-Dos
+
+## GUI Enhancements
+- [ ] Implement basic output formatting/syntax highlighting for command output.
+- [ ] Explore clickable links in the output area (URLs, file paths).
+- [ ] Add customizable themes for the GUI.
+- [ ] Implement resizable panes for input and output areas.
+- [ ] Improve scrollbar experience for very long outputs.
+- [ ] Develop a dedicated UI for application settings/preferences.
+
+## Shell Core Enhancements
+- [ ] Expand `ls` functionality to support common flags (e.g., `-l`, `-a`).
+- [ ] Implement `mkdir` built-in command.
+- [ ] Implement `rm` built-in command for files and directories.
+- [ ] Implement `cp` and `mv` built-in commands for copying and moving files/directories.
+- [ ] Refine error handling for built-in commands to provide more user-friendly feedback.
+- [ ] Enhance autocompletion for more complex path scenarios and command arguments.
+
+## General Improvements
+- [ ] Add comprehensive integration tests for the GUI and shell core interactions.
+- [ ] Optimize performance for very large outputs or long-running commands.
+- [ ] Consider adding a plugin system for extending shell functionality.
