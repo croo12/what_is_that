@@ -20,7 +20,7 @@ pub struct ShellTab {
     command_history: CommandHistory,
     current_dir_display: Arc<Mutex<String>>,
     autocompleter: Autocompleter,
-    suggestions: Arc<Mutex<Vec<String>>>,
+    suggestions: Arc<Mutex<Vec<String>>>, 
     active_suggestion_index: Arc<Mutex<Option<usize>>>,
 }
 
@@ -56,7 +56,7 @@ impl ShellTab {
             *current_dir_display_arc_clone_for_spawn.lock().await = new_dir;
         });
 
-        ui.label(format!("Current Directory: {}", self.current_dir_display.try_lock().map(|s| s.clone()).unwrap_or_else(|_| "(Loading...)".to_string())));
+        ui.label(format!("Current Directory: {}", self.current_dir_display.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Loading...)".to_string())));
 
         ui.add_space(10.0);
         ui.separator();
@@ -64,39 +64,17 @@ impl ShellTab {
 
         // Scrollable area for displaying command output
         egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
-            let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_| "(Output busy...)".to_string());
+            let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Output busy...)".to_string());
             ui_scroll.label(output_str);
         });
 
-        // Display suggestions
-        let mut should_clear_suggestions = false;
-        let suggestions_guard = self.suggestions.try_lock();
-        let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
-
-        if let (Ok(suggestions), Ok(active_suggestion_index)) = (suggestions_guard, active_suggestion_index_guard) {
-            if !suggestions.is_empty() && self.input.len() > 0 {
-                ui.group(|ui| {
-                    ui.set_width(ui.available_width());
-                    for (i, suggestion) in suggestions.iter().enumerate() {
-                        let is_active = *active_suggestion_index == Some(i);
-                        if ui.selectable_label(is_active, suggestion).clicked() {
-                            self.input = suggestion.clone();
-                            should_clear_suggestions = true;
-                            // active_suggestion_index = None; // This needs to be set after the loop
-                        }
-                    }
-                });
-            }
-        }
-        
-        if should_clear_suggestions {
-            self.suggestions.try_lock().unwrap().clear();
-            *self.active_suggestion_index.try_lock().unwrap() = None;
-        }
+        let mut input_has_focus = false; // Declare here
 
         ui.horizontal(|ui| {
             ui.label("Command:");
             let response = ui.text_edit_singleline(&mut self.input);
+
+            input_has_focus = ui.memory(|mem| mem.has_focus(response.id)); // Initialize here
 
             if response.changed() {
                 // Generate suggestions when input changes
@@ -137,7 +115,7 @@ impl ShellTab {
                 response.request_focus();
             }
 
-            if response.has_focus() {
+            if input_has_focus {
                 ui.input(|i| {
                     if i.key_pressed(egui::Key::ArrowUp) {
                         let mut active_suggestion_index = self.active_suggestion_index.try_lock().unwrap();
@@ -186,6 +164,32 @@ impl ShellTab {
                 });
             }
         });
+
+        // Display suggestions
+        let mut should_clear_suggestions = false;
+        let suggestions_guard = self.suggestions.try_lock();
+        let active_suggestion_index_guard = self.active_suggestion_index.try_lock();
+
+        if let (Ok(suggestions), Ok(active_suggestion_index)) = (suggestions_guard, active_suggestion_index_guard) {
+            if !suggestions.is_empty() && self.input.len() > 0 && input_has_focus {
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    for (i, suggestion) in suggestions.iter().enumerate() {
+                        let is_active = *active_suggestion_index == Some(i);
+                        if ui.selectable_label(is_active, suggestion).clicked() {
+                            self.input = suggestion.clone();
+                            should_clear_suggestions = true;
+                            // active_suggestion_index = None; // This needs to be set after the loop
+                        }
+                    }
+                });
+            }
+        }
+        
+        if should_clear_suggestions {
+            self.suggestions.try_lock().unwrap().clear();
+            *self.active_suggestion_index.try_lock().unwrap() = None;
+        }
     }
 
     /// Executes the command currently in the input field.
