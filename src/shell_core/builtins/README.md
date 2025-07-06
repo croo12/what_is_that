@@ -18,7 +18,7 @@ The following built-in commands are currently implemented:
 ## To-Dos
 
 *   **Expand `ls` functionality:** Add support for common `ls` flags (e.g., `-l` for long listing, `-a` for all files).
-*   **Implement `mkdir`:** Create a built-in command for creating new directories.
+*   `mkdir`: Create a built-in command for creating new directories.
 *   **Implement `rm`:** Create a built-in command for removing files and directories.
 *   **Implement `cp` and `mv`:** Add built-in commands for copying and moving files/directories.
 *   **Error Handling Refinement:** Improve error messages and handling for built-in commands to provide more user-friendly feedback.
