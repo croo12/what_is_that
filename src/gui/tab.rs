@@ -65,7 +65,16 @@ impl ShellTab {
         // Scrollable area for displaying command output
         egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
             let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Output busy...)".to_string());
-            ui_scroll.label(output_str);
+            for line in output_str.lines() {
+                let formatted_line = if line.contains("Error") || line.contains("cannot") || line.contains("No such file or directory") {
+                    egui::RichText::new(line).color(egui::Color32::RED)
+                } else if line.contains("Successfully") || line.contains("created") {
+                    egui::RichText::new(line).color(egui::Color32::GREEN)
+                } else {
+                    egui::RichText::new(line)
+                };
+                ui_scroll.label(formatted_line);
+            }
         });
 
         let mut input_has_focus = false; // Declare here

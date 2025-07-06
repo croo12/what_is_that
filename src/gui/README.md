@@ -17,7 +17,7 @@ The GUI currently features:
 
 ## To-Dos
 
-*   **Syntax Highlighting for Output:** Implement syntax highlighting for different types of command output (e.g., JSON, XML, code snippets).
+*   **Syntax Highlighting for Output:** Basic output formatting (errors, success) implemented.
 *   **Clickable Links in Output:** Make URLs and file paths in the output clickable.
 *   **Customizable Themes:** Allow users to select different color themes for the GUI.
 *   **Resizable Panes:** Enable resizing of the input and output areas.

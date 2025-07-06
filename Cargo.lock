@@ -2021,7 +2021,6 @@ dependencies = [
  "num-traits",
  "open",
  "pnet",
- "shlex",
  "tokio",
 ]
 

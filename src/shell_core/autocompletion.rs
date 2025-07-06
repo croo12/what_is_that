@@ -146,8 +146,7 @@ impl Autocompleter {
             } else if let Some(parent) = input_path.parent() {
                 path_for_fs_scan = current_dir.join(parent);
                 prefix_for_fs_scan = input_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            }
-            else {
+            } else {
                 prefix_for_fs_scan = input.to_string();
             }
         }

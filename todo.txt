@@ -1,7 +1,7 @@
 # Project To-Dos
 
 ## GUI Enhancements
-- [ ] Implement basic output formatting/syntax highlighting for command output.
+- [x] Implement basic output formatting/syntax highlighting for command output.
 - [ ] Explore clickable links in the output area (URLs, file paths).
 - [ ] Add customizable themes for the GUI.
 - [ ] Implement resizable panes for input and output areas.
