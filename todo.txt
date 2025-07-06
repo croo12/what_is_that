@@ -10,8 +10,8 @@
 
 ## Shell Core Enhancements
 - [ ] Expand `ls` functionality to support common flags (e.g., `-l`, `-a`).
-- [ ] Implement `mkdir` built-in command.
-- [ ] Implement `rm` built-in command for files and directories.
+- [x] Implement `mkdir` built-in command.
+- [x] Implement `rm` built-in command for files and directories.
 - [ ] Implement `cp` and `mv` built-in commands for copying and moving files/directories.
 - [ ] Refine error handling for built-in commands to provide more user-friendly feedback.
 - [ ] Enhance autocompletion for more complex path scenarios and command arguments.

@@ -17,6 +17,7 @@ pub async fn execute_shell_command(current_dir: &mut PathBuf, command_str: &str)
         "cd" => builtins::cd::cd_builtin(current_dir, args).await,
         "open" => builtins::open::open_builtin(current_dir, args).await,
         "mkdir" => builtins::mkdir::mkdir_builtin(current_dir, args).await,
+        "rm" => builtins::rm::rm_builtin(current_dir, args).await,
         _ => external::execute_external_command(current_dir, command_str).await,
     }
 }
