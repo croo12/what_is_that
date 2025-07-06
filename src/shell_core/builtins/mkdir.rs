@@ -41,4 +41,19 @@ mod tests {
 
         fs::remove_dir_all(&temp_dir).await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_mkdir_builtin_existing_dir() {
+        let temp_dir = env::temp_dir().join("test_mkdir_builtin_existing_dir");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+        let existing_dir = temp_dir.join("existing_dir");
+        fs::create_dir_all(&existing_dir).await.unwrap(); // Ensure the directory exists
+
+        let args = ["existing_dir"];
+        let output = mkdir_builtin(&temp_dir, &args).await;
+
+        assert!(output.contains("파일이 이미 있으므로 만들 수 없습니다."), "Expected 'File exists' error, but got: {}", output);
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
 }

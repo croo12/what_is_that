@@ -65,4 +65,17 @@ mod tests {
 
         fs::remove_dir_all(&temp_dir).await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_rm_builtin_nonexistent() {
+        let temp_dir = env::temp_dir().join("test_rm_builtin_nonexistent");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+
+        let args = ["nonexistent_file.txt"];
+        let output = rm_builtin(&temp_dir, &args).await;
+
+        assert!(output.contains("No such file or directory"), "Expected 'No such file or directory' error, but got: {}", output);
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
 }

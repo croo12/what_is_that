@@ -4,3 +4,5 @@ pub mod ping;
 pub mod open;
 pub mod mkdir;
 pub mod rm;
+pub mod cp;
+pub mod mv;

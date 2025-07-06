@@ -11,7 +11,7 @@ To provide a cross-platform, GUI-based command-line experience by implementing s
 -   **`execute_shell_command` function:** The main entry point for executing commands. It dispatches to built-in implementations or external OS commands.
 -   **Built-in Commands:** Native Rust implementations of common shell commands (e.g., `ls`, `cd`, `echo`).
 -   **External Command Execution:** Logic for spawning and managing external processes when a command is not a built-in.
--   **Autocompletion:** Provides suggestions for commands and arguments based on history and built-in commands.
+-   **Autocompletion:** Provides enhanced suggestions for commands and arguments, including support for complex path scenarios and arguments with spaces.
 
 ## Built-in Commands Implemented:
 

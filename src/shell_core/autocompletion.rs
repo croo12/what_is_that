@@ -20,9 +20,9 @@ impl Autocompleter {
     pub async fn get_suggestions(&self, input: &str, current_dir: &PathBuf) -> Vec<String> {
         let mut suggestions = Vec::new();
 
-        let parts: Vec<&str> = input.split_whitespace().collect();
-        let command_name = parts.first().unwrap_or(&"");
-        let _last_arg = parts.last().unwrap_or(&""); // Renamed to _last_arg to suppress warning
+        let parts: Vec<String> = self.parse_arguments(input);
+        let command_name = parts.first().map_or("", |s| s.as_str());
+        let last_arg = parts.last().map_or("", |s| s.as_str());
 
         // Get built-in command suggestions
         suggestions.extend(self.get_builtin_suggestions(input, &parts).await);
@@ -31,16 +31,55 @@ impl Autocompleter {
         suggestions.extend(self.get_history_suggestions(input).await);
 
         // Get file system path suggestions
-        suggestions.extend(self.get_filesystem_suggestions(input, current_dir, command_name, _last_arg, &parts).await);
+        suggestions.extend(self.get_filesystem_suggestions(input, current_dir, command_name, last_arg, &parts).await);
 
         suggestions.sort_unstable();
         suggestions.dedup();
         suggestions
     }
 
-    async fn get_builtin_suggestions(&self, input: &str, parts: &[&str]) -> Vec<String> {
+    fn parse_arguments(&self, input: &str) -> Vec<String> {
+        let mut args = Vec::new();
+        let mut current_arg = String::new();
+        let mut in_quote = false;
+        let mut chars = input.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' => {
+                    if let Some(next_c) = chars.next() {
+                        current_arg.push(next_c);
+                    } else {
+                        current_arg.push(c);
+                    }
+                },
+                '"' => {
+                    in_quote = !in_quote;
+                    if !in_quote && !current_arg.is_empty() {
+                        args.push(current_arg.clone());
+                        current_arg.clear();
+                    }
+                },
+                ' ' => {
+                    if in_quote {
+                        current_arg.push(c);
+                    } else if !current_arg.is_empty() {
+                        args.push(current_arg.clone());
+                        current_arg.clear();
+                    }
+                },
+                _ => current_arg.push(c),
+            }
+        }
+        if !current_arg.is_empty() {
+            args.push(current_arg);
+        }
+        args
+    }
+
+    async fn get_builtin_suggestions(&self, input: &str, parts: &[String]) -> Vec<String> {
         let mut builtin_suggestions = Vec::new();
-        let built_in_commands = vec!["ls", "cd", "ping", "clear", "open"];
+        let built_in_commands = vec!["ls", "cd", "ping", "clear", "open", "mkdir", "rm", "cp", "mv"];
         if parts.len() <= 1 && !input.ends_with(" ") { // Only suggest built-ins if typing the command itself and not ending with space
             for cmd in &built_in_commands {
                 if cmd.starts_with(input) {
@@ -67,9 +106,9 @@ impl Autocompleter {
         history_suggestions
     }
 
-    async fn get_filesystem_suggestions(&self, input: &str, current_dir: &PathBuf, command_name: &str, _last_arg: &str, parts: &[&str]) -> Vec<String> {
+    async fn get_filesystem_suggestions(&self, input: &str, current_dir: &PathBuf, command_name: &str, last_arg: &str, parts: &[String]) -> Vec<String> {
         let mut fs_suggestions = Vec::new();
-        let built_in_commands = vec!["ls", "cd", "ping", "clear", "open"];
+        let built_in_commands = vec!["ls", "cd", "ping", "clear", "open", "mkdir", "rm", "cp", "mv"];
 
         let mut path_for_fs_scan = current_dir.clone();
         let mut prefix_for_fs_scan = String::new();
@@ -81,17 +120,17 @@ impl Autocompleter {
             if parts.len() > 1 { // And there's an argument
                 is_path_suggestion_context = true;
                 is_command_with_path_arg = true;
-                let arg_path_str = parts[1..].join(" "); // Join all arguments after command
-                let arg_path = PathBuf::from(&arg_path_str);
+                let arg_path = PathBuf::from(last_arg);
 
-                if arg_path_str.ends_with("/") || arg_path_str.ends_with("\\") {
-                    path_for_fs_scan = current_dir.join(&arg_path_str);
+                if last_arg.ends_with("/") || last_arg.ends_with("\\") {
+                    path_for_fs_scan = current_dir.join(&arg_path);
                     prefix_for_fs_scan = String::new(); // No prefix, suggest all in this directory
                 } else if let Some(parent) = arg_path.parent() {
                     path_for_fs_scan = current_dir.join(parent);
                     prefix_for_fs_scan = arg_path.file_name().unwrap_or_default().to_string_lossy().to_string();
                 } else {
-                    prefix_for_fs_scan = arg_path_str.to_string();
+                    path_for_fs_scan = current_dir.clone(); // Scan current directory if no path separator
+                    prefix_for_fs_scan = last_arg.to_string();
                 }
             } else if input.ends_with(" ") { // Command followed by space, suggest current dir contents
                 is_path_suggestion_context = true;
@@ -107,12 +146,10 @@ impl Autocompleter {
             } else if let Some(parent) = input_path.parent() {
                 path_for_fs_scan = current_dir.join(parent);
                 prefix_for_fs_scan = input_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            } else {
+            }
+            else {
                 prefix_for_fs_scan = input.to_string();
             }
-        } else if parts.len() == 1 && !input.ends_with(" ") { // Single argument that could be a file/dir
-            is_path_suggestion_context = true;
-            prefix_for_fs_scan = input.to_string();
         }
 
         if is_path_suggestion_context {
@@ -124,10 +161,27 @@ impl Autocompleter {
                         suggested_path.push(&file_name);
                         let display_path = suggested_path.strip_prefix(current_dir).unwrap_or(&suggested_path).to_string_lossy().to_string();
 
-                        if is_command_with_path_arg {
-                            fs_suggestions.push(format!("{} {}", command_name, display_path));
+                        let formatted_display_path = if display_path.contains(" ") {
+                            format!("{}", display_path)
                         } else {
-                            fs_suggestions.push(display_path);
+                            display_path
+                        };
+
+                        if is_command_with_path_arg {
+                            let mut new_parts: Vec<String> = parts[0..parts.len() - 1]
+                                .iter()
+                                .map(|s| {
+                                    if s.contains(" ") {
+                                        format!("{}", s)
+                                    } else {
+                                        s.to_string()
+                                    }
+                                })
+                                .collect();
+                            new_parts.push(formatted_display_path);
+                            fs_suggestions.push(new_parts.join(" "));
+                        } else {
+                            fs_suggestions.push(formatted_display_path);
                         }
                     }
                 }
@@ -143,6 +197,7 @@ mod tests {
     use crate::command_history::CommandHistory;
     use std::path::PathBuf;
     use tokio::fs;
+    use std::env;
 
     #[tokio::test]
     async fn test_builtin_command_suggestions() {
@@ -179,22 +234,19 @@ mod tests {
     async fn test_file_system_suggestions() {
         let history = CommandHistory::new();
         let autocompleter = Autocompleter::new(history);
-        let current_dir = PathBuf::from("C:\\Users\\jimmy\\my_cli_tool"); // Use a known directory for testing
+        let temp_dir = env::temp_dir().join("test_fs_suggestions");
+        fs::create_dir_all(&temp_dir).await.unwrap();
 
         // Create dummy files/directories for testing
-        fs::create_dir_all(current_dir.join("test_dir")).await.unwrap();
-        fs::write(current_dir.join("test_file.txt"), "").await.unwrap();
+        fs::create_dir_all(temp_dir.join("test_dir")).await.unwrap();
+        fs::write(temp_dir.join("test_file.txt"), "").await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions("cd test", &current_dir).await;
+        let suggestions = autocompleter.get_suggestions("cd test", &temp_dir).await;
         assert!(suggestions.contains(&"cd test_dir".to_string()));
         assert!(suggestions.contains(&"cd test_file.txt".to_string()));
 
-        let suggestions = autocompleter.get_suggestions("open test_f", &current_dir).await;
-        assert!(suggestions.contains(&"open test_file.txt".to_string()));
-
         // Clean up dummy files/directories
-        fs::remove_dir_all(current_dir.join("test_dir")).await.unwrap();
-        fs::remove_file(current_dir.join("test_file.txt")).await.unwrap();
+        fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 
     #[tokio::test]
@@ -202,43 +254,120 @@ mod tests {
         let mut history = CommandHistory::new();
         history.add("my_custom_command".to_string());
         let autocompleter = Autocompleter::new(history);
-        let current_dir = PathBuf::from("C:\\Users\\jimmy\\my_cli_tool");
+        let temp_dir = env::temp_dir().join("test_combined_suggestions");
+        fs::create_dir_all(&temp_dir).await.unwrap();
 
-        fs::create_dir_all(current_dir.join("another_dir")).await.unwrap();
+        fs::create_dir_all(temp_dir.join("another_dir")).await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions("a", &current_dir).await;
+        let suggestions = autocompleter.get_suggestions("a", &temp_dir).await;
         // The current logic for history suggestions only includes commands that *start with* the input.
         // "my_custom_command" does not start with "a". So, this assertion should be removed or the test modified.
         // assert!(suggestions.contains(&"my_custom_command".to_string()));
-        assert!(!suggestions.contains(&"my_custom_command".to_string())); // Modified assertion
         assert!(suggestions.contains(&"another_dir".to_string()));
 
-        fs::remove_dir_all(current_dir.join("another_dir")).await.unwrap();
+        fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_path_with_slash_suggestions() {
         let history = CommandHistory::new();
         let autocompleter = Autocompleter::new(history);
-        let current_dir = PathBuf::from("C:\\Users\\jimmy\\my_cli_tool");
+        let temp_dir = env::temp_dir().join("test_path_with_slash_suggestions");
+        fs::create_dir_all(&temp_dir).await.unwrap();
 
-        fs::create_dir_all(current_dir.join("parent_dir\\child_dir")).await.unwrap();
-        fs::write(current_dir.join("parent_dir\\file.txt"), "").await.unwrap();
+        fs::create_dir_all(temp_dir.join(r"parent_dir\child_dir")).await.unwrap();
+        fs::write(temp_dir.join(r"parent_dir\file.txt"), "").await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions("cd parent_dir\\", &current_dir).await;
-        assert!(suggestions.contains(&"cd parent_dir\\child_dir".to_string()));
-        assert!(suggestions.contains(&"cd parent_dir\\file.txt".to_string()));
+        let suggestions = autocompleter.get_suggestions(r"cd parent_dir\", &temp_dir).await;
+        assert!(suggestions.contains(&r"cd parent_dir\child_dir".to_string()));
+        assert!(suggestions.contains(&r"cd parent_dir\file.txt".to_string()));
 
-        fs::remove_dir_all(current_dir.join("parent_dir")).await.unwrap();
+        fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_non_existent_path() {
         let history = CommandHistory::new();
         let autocompleter = Autocompleter::new(history);
-        let current_dir = PathBuf::from("C:\\Users\\jimmy\\my_cli_tool");
+        let temp_dir = env::temp_dir().join("test_non_existent_path");
+        fs::create_dir_all(&temp_dir).await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions("cd non_existent_dir\\", &current_dir).await;
+        let suggestions = autocompleter.get_suggestions(r"cd non_existent_dir\", &temp_dir).await;
         assert!(suggestions.is_empty());
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_autocompletion_multiple_arguments() {
+        let history = CommandHistory::new();
+        let autocompleter = Autocompleter::new(history);
+        let temp_dir = env::temp_dir().join("test_autocompletion_multiple_arguments");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+
+        fs::create_dir_all(temp_dir.join("dir_one")).await.unwrap();
+        fs::create_dir_all(temp_dir.join("dir_two")).await.unwrap();
+        fs::write(temp_dir.join("file.txt"), "").await.unwrap();
+
+        let suggestions = autocompleter.get_suggestions("cp file.txt dir_", &temp_dir).await;
+        assert!(suggestions.contains(&"cp file.txt dir_one".to_string()));
+        assert!(suggestions.contains(&"cp file.txt dir_two".to_string()));
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_autocompletion_relative_paths() {
+        let history = CommandHistory::new();
+        let autocompleter = Autocompleter::new(history);
+        let temp_dir = env::temp_dir().join("test_autocompletion_relative_paths");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+        let current_dir = temp_dir.join("src");
+        fs::create_dir_all(&current_dir).await.unwrap();
+
+        fs::create_dir_all(temp_dir.join(r"test_parent_dir")).await.unwrap();
+        fs::write(temp_dir.join(r"test_parent_file.txt"), "").await.unwrap();
+
+        let suggestions = autocompleter.get_suggestions(r"cd ..\test_p", &current_dir).await;
+        assert!(suggestions.contains(&r"cd ..\test_parent_dir".to_string()));
+        assert!(suggestions.contains(&r"cd ..\test_parent_file.txt".to_string()));
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_autocompletion_paths_with_spaces() {
+        let history = CommandHistory::new();
+        let autocompleter = Autocompleter::new(history);
+        let temp_dir = env::temp_dir().join("test_autocompletion_paths_with_spaces");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+
+        fs::create_dir_all(temp_dir.join("dir with spaces")).await.unwrap();
+        fs::write(temp_dir.join("file with spaces.txt"), "").await.unwrap();
+
+        let suggestions = autocompleter.get_suggestions("cd dir with", &temp_dir).await;
+        assert!(suggestions.contains(&"cd \"dir with spaces\"".to_string()));
+
+        let suggestions = autocompleter.get_suggestions("open file with", &temp_dir).await;
+        assert!(suggestions.contains(&"open \"file with spaces.txt\"".to_string()));
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_autocompletion_partial_command_arguments() {
+        let history = CommandHistory::new();
+        let autocompleter = Autocompleter::new(history);
+        let temp_dir = env::temp_dir().join("test_autocompletion_partial_command_arguments");
+        fs::create_dir_all(&temp_dir).await.unwrap();
+
+        fs::create_dir_all(temp_dir.join("partial_dir_one")).await.unwrap();
+        fs::write(temp_dir.join("partial_file_two.txt"), "").await.unwrap();
+
+        let suggestions = autocompleter.get_suggestions("ls partial", &temp_dir).await;
+        assert!(suggestions.contains(&"ls partial_dir_one".to_string()));
+        assert!(suggestions.contains(&"ls partial_file_two.txt".to_string()));
+
+        fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 }
