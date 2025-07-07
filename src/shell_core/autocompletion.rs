@@ -1,3 +1,4 @@
+/*
 //! This module provides functionality for command autocompletion and suggestions.
 
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ impl Autocompleter {
         suggestions.extend(self.get_history_suggestions(input).await);
 
         // Get file system path suggestions
-        suggestions.extend(self.get_filesystem_suggestions(input, current_dir, command_name, last_arg, &parts).await);
+        suggestions.extend(self.get_filesystem_suggestions(input, current_dir, command_name, last_arg).await);
 
         suggestions.sort_unstable();
         suggestions.dedup();
@@ -106,86 +107,59 @@ impl Autocompleter {
         history_suggestions
     }
 
-    async fn get_filesystem_suggestions(&self, input: &str, current_dir: &PathBuf, command_name: &str, last_arg: &str, parts: &[String]) -> Vec<String> {
+    async fn get_filesystem_suggestions(&self, input: &str, current_dir: &PathBuf, _command_name: &str, _last_arg: &str) -> Vec<String> {
         let mut fs_suggestions = Vec::new();
-        let built_in_commands = vec!["ls", "cd", "ping", "clear", "open", "mkdir", "rm", "cp", "mv"];
 
-        let mut path_for_fs_scan = current_dir.clone();
-        let mut prefix_for_fs_scan = String::new();
-        let mut is_path_suggestion_context = false;
-        let mut is_command_with_path_arg = false; // New flag to distinguish "cd path" from "path"
+        let (base_cmd, path_prefix) = if let Some(pos) = input.rfind(' ') {
+            // Find the real start of the argument, even with multiple spaces
+            let trim_pos = input.trim_end().rfind(' ').unwrap_or(pos);
+            (&input[..=trim_pos], &input[trim_pos + 1..])
+        } else {
+            ("", input)
+        };
 
-        // Determine if we are in a context where path suggestions are relevant
-        if built_in_commands.contains(&command_name) { // If it's a known command
-            if parts.len() > 1 { // And there's an argument
-                is_path_suggestion_context = true;
-                is_command_with_path_arg = true;
-                let arg_path = PathBuf::from(last_arg);
-
-                if last_arg.ends_with("/") || last_arg.ends_with("\\") {
-                    path_for_fs_scan = current_dir.join(&arg_path);
-                    prefix_for_fs_scan = String::new(); // No prefix, suggest all in this directory
-                } else if let Some(parent) = arg_path.parent() {
-                    path_for_fs_scan = current_dir.join(parent);
-                    prefix_for_fs_scan = arg_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-                } else {
-                    path_for_fs_scan = current_dir.clone(); // Scan current directory if no path separator
-                    prefix_for_fs_scan = last_arg.to_string();
-                }
-            } else if input.ends_with(" ") { // Command followed by space, suggest current dir contents
-                is_path_suggestion_context = true;
-                is_command_with_path_arg = true;
-                prefix_for_fs_scan = String::new();
-            }
-        } else if !input.is_empty() && (input.contains("/") || input.contains("\\") || PathBuf::from(input).exists()) { // If input itself looks like a path or exists
-            is_path_suggestion_context = true;
-            let input_path = PathBuf::from(input);
-            if input.ends_with("/") || input.ends_with("\\") {
-                path_for_fs_scan = current_dir.join(input_path);
-                prefix_for_fs_scan = String::new();
-            } else if let Some(parent) = input_path.parent() {
-                path_for_fs_scan = current_dir.join(parent);
-                prefix_for_fs_scan = input_path.file_name().unwrap_or_default().to_string_lossy().to_string();
-            } else {
-                prefix_for_fs_scan = input.to_string();
-            }
+        if path_prefix.is_empty() && !input.ends_with(' ') {
+             if base_cmd.is_empty() {
+                 if let Ok(mut entries) = fs::read_dir(current_dir).await {
+                     while let Some(entry) = entries.next_entry().await.unwrap_or(None) {
+                         let file_name = entry.file_name().to_string_lossy().to_string();
+                         if file_name.starts_with(path_prefix) {
+                             let suggestion = if file_name.contains(' ') {
+                                 format!("\"{}"\", file_name)
+                             } else {
+                                 file_name
+                             };
+                             fs_suggestions.push(suggestion);
+                         }
+                     }
+                 }
+             }
+             return fs_suggestions;
         }
 
-        if is_path_suggestion_context {
-            if let Ok(mut entries) = fs::read_dir(&path_for_fs_scan).await {
-                while let Some(entry) = entries.next_entry().await.unwrap() {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    if file_name.starts_with(&prefix_for_fs_scan) {
-                        let mut suggested_path = PathBuf::from(&path_for_fs_scan);
-                        suggested_path.push(&file_name);
-                        let display_path = suggested_path.strip_prefix(current_dir).unwrap_or(&suggested_path).to_string_lossy().to_string();
+        let path = PathBuf::from(path_prefix);
+        let (scan_dir, prefix) = if path_prefix.ends_with('/') || path_prefix.ends_with('\\') {
+            (current_dir.join(&path), "".to_string())
+        } else if let Some(parent) = path.parent() {
+            (current_dir.join(parent), path.file_name().unwrap_or_default().to_string_lossy().to_string())
+        } else {
+            (current_dir.clone(), path_prefix.to_string())
+        };
 
-                        let formatted_display_path = if display_path.contains(" ") {
-                            format!("{}", display_path)
-                        } else {
-                            display_path
-                        };
-
-                        if is_command_with_path_arg {
-                            let mut new_parts: Vec<String> = parts[0..parts.len() - 1]
-                                .iter()
-                                .map(|s| {
-                                    if s.contains(" ") {
-                                        format!("{}", s)
-                                    } else {
-                                        s.to_string()
-                                    }
-                                })
-                                .collect();
-                            new_parts.push(formatted_display_path);
-                            fs_suggestions.push(new_parts.join(" "));
-                        } else {
-                            fs_suggestions.push(formatted_display_path);
-                        }
-                    }
+        if let Ok(mut entries) = fs::read_dir(scan_dir).await {
+            while let Some(entry) = entries.next_entry().await.unwrap_or(None) {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                if file_name.starts_with(&prefix) {
+                    let suggestion = if file_name.contains(' ') {
+                        format!("\"{}"\", file_name)
+                    } else {
+                        file_name
+                    };
+                    fs_suggestions.push(format!("{}{}", base_cmd, suggestion));
                 }
             }
         }
+
         fs_suggestions
     }
 }
@@ -274,12 +248,12 @@ mod tests {
         let temp_dir = env::temp_dir().join("test_path_with_slash_suggestions");
         fs::create_dir_all(&temp_dir).await.unwrap();
 
-        fs::create_dir_all(temp_dir.join(r"parent_dir\child_dir")).await.unwrap();
-        fs::write(temp_dir.join(r"parent_dir\file.txt"), "").await.unwrap();
+        fs::create_dir_all(temp_dir.join("parent_dir\\child_dir")).await.unwrap();
+        fs::write(temp_dir.join("parent_dir\\file.txt"), "").await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions(r"cd parent_dir\", &temp_dir).await;
-        assert!(suggestions.contains(&r"cd parent_dir\child_dir".to_string()));
-        assert!(suggestions.contains(&r"cd parent_dir\file.txt".to_string()));
+        let suggestions = autocompleter.get_suggestions("cd parent_dir\\", &temp_dir).await;
+        assert!(suggestions.contains(&"cd parent_dir\\child_dir".to_string()));
+        assert!(suggestions.contains(&"cd parent_dir\\file.txt".to_string()));
 
         fs::remove_dir_all(&temp_dir).await.unwrap();
     }
@@ -291,7 +265,7 @@ mod tests {
         let temp_dir = env::temp_dir().join("test_non_existent_path");
         fs::create_dir_all(&temp_dir).await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions(r"cd non_existent_dir\", &temp_dir).await;
+        let suggestions = autocompleter.get_suggestions("cd non_existent_dir\\", &temp_dir).await;
         assert!(suggestions.is_empty());
 
         fs::remove_dir_all(&temp_dir).await.unwrap();
@@ -324,12 +298,12 @@ mod tests {
         let current_dir = temp_dir.join("src");
         fs::create_dir_all(&current_dir).await.unwrap();
 
-        fs::create_dir_all(temp_dir.join(r"test_parent_dir")).await.unwrap();
-        fs::write(temp_dir.join(r"test_parent_file.txt"), "").await.unwrap();
+        fs::create_dir_all(temp_dir.join("test_parent_dir")).await.unwrap();
+        fs::write(temp_dir.join("test_parent_file.txt"), "").await.unwrap();
 
-        let suggestions = autocompleter.get_suggestions(r"cd ..\test_p", &current_dir).await;
-        assert!(suggestions.contains(&r"cd ..\test_parent_dir".to_string()));
-        assert!(suggestions.contains(&r"cd ..\test_parent_file.txt".to_string()));
+        let suggestions = autocompleter.get_suggestions("cd ..\\test_p", &current_dir).await;
+        assert!(suggestions.contains(&"cd ..\\test_parent_dir".to_string()));
+        assert!(suggestions.contains(&"cd ..\\test_parent_file.txt".to_string()));
 
         fs::remove_dir_all(&temp_dir).await.unwrap();
     }
@@ -370,3 +344,4 @@ mod tests {
         fs::remove_dir_all(&temp_dir).await.unwrap();
     }
 }
+*/

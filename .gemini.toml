@@ -1,0 +1,23 @@
+# Gemini agent settings for the my_cli_tool project.
+
+[project]
+description = "A cross-platform graphical user interface (GUI) shell application built with Rust and egui."
+
+[commands]
+# Command to build the project in release mode.
+build = "cargo build --release"
+
+# Command to run the application.
+run = "cargo run"
+
+# Command to run tests.
+test = "cargo test"
+
+# Command to lint the code for common mistakes and style issues.
+lint = "cargo clippy --all-targets --all-features -- -D warnings"
+
+# Command to format the code according to Rust conventions.
+format = "cargo fmt --all"
+
+# Command to check the code for compilation errors without building.
+check = "cargo check"
