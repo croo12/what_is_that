@@ -8,10 +8,10 @@ To provide a cross-platform, GUI-based command-line experience by implementing s
 
 ## Components
 
--   **`execute_shell_command` function:** The main entry point for executing commands. It dispatches to built-in implementations or external OS commands.
--   **Built-in Commands:** Native Rust implementations of common shell commands (e.g., `ls`, `cd`, `echo`).
--   **External Command Execution:** Logic for spawning and managing external processes when a command is not a built-in.
--   **Autocompletion:** Provides enhanced suggestions for commands and arguments, including support for complex path scenarios and arguments with spaces.
+-   **`command_executor.rs`:** The main entry point for executing commands. It uses the `shlex` crate to parse the input string and then dispatches to built-in implementations or external OS commands.
+-   **`autocompletion.rs`:** Provides context-aware command and path suggestions. This feature is now enabled and uses the `shlex` parser for more accurate, context-aware suggestions, including for paths with spaces.
+-   **`builtins/`:** Native Rust implementations of common shell commands (e.g., `ls`, `cd`, `echo`).
+-   **`external.rs`:** Logic for spawning and managing external processes when a command is not a built-in.
 
 ## Built-in Commands Implemented:
 
@@ -22,13 +22,8 @@ To provide a cross-platform, GUI-based command-line experience by implementing s
 
 ## Dependencies
 
-This module relies on `tokio` for asynchronous operations and `encoding_rs` for character encoding handling.
+This module relies on `tokio` for asynchronous operations, `encoding_rs` for character encoding handling, and `shlex` for command parsing.
 
 ## Current State
 
-The `shell_core` module has been refactored into smaller, more manageable sub-modules for improved organization and maintainability. It now includes:
-
-*   **`builtins/`:** Contains individual implementations of built-in commands (`cd.rs`, `ls.rs`, `ping.rs`, `open.rs`).
-*   **`command_executor.rs`:** Encapsulates the logic for dispatching commands to either built-in implementations or external system commands.
-*   **`autocompletion.rs`:** Provides context-aware command and path suggestions.
-    **Note:** The current implementation of autocompletion is temporarily disabled. It requires a more robust parsing engine to handle complex cases correctly. The future plan is to build a proper command-line parser first, and then re-implement the autocompletion feature on top of that solid foundation. This will ensure better accuracy and extensibility, similar to modern shells like zsh or PowerShell.
+The `shell_core` module has been refactored into smaller, more manageable sub-modules for improved organization and maintainability. The command executor now uses `shlex` to robustly parse user input, correctly handling quoted arguments. The autocompletion feature has been re-enabled and updated to use this new parser, providing a more reliable and intuitive user experience.

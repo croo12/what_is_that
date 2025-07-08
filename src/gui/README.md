@@ -8,6 +8,11 @@ To provide a user-friendly and visually interactive front-end for the underlying
 
 ## Current State
 
+The GUI has been refactored into a more modular structure for better organization and maintainability:
+*   **`app.rs`**: Contains the main `GuiApp` struct and the core application state.
+*   **`tab.rs`**: Defines the UI and state for a single shell tab.
+*   **`tab_bar.rs`**: Manages the rendering and interaction of the tab bar.
+
 The GUI currently features:
 
 *   **Multi-Tabbed Interface:** Allows users to manage multiple independent shell sessions simultaneously.
