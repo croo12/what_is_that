@@ -3,8 +3,8 @@
 //! and handles the main event loop for the GUI.
 
 mod gui;
-mod shell_core;
-mod command_history;
+pub mod shell_core;
+pub mod command_history;
 
 use eframe::egui;
 use tokio::sync::oneshot;
