@@ -1,4 +1,3 @@
-use std::env;
 use std::path::PathBuf;
 
 pub async fn cd_builtin(current_dir: &mut PathBuf, args: &[&str]) -> String {

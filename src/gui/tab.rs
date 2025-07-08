@@ -4,7 +4,6 @@ use eframe::egui;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task;
-use std::path::PathBuf;
 use chrono::Local;
 
 use crate::command_history::CommandHistory;

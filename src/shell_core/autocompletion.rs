@@ -107,7 +107,7 @@ impl Autocompleter {
                             file_name.into_owned()
                         };
 
-                        let mut final_suggestion = if is_dir && !new_last_part.ends_with('/') {
+                        let final_suggestion = if is_dir && !new_last_part.ends_with('/') {
                             format!("{}/", new_last_part)
                         } else {
                             new_last_part
