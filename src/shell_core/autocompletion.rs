@@ -85,7 +85,10 @@ impl Autocompleter {
         };
 
         let path = PathBuf::from(&last_part);
-        let (scan_dir, prefix) = if let Some(parent) = path.parent() {
+        
+        let (scan_dir, prefix) = if last_part.ends_with('/') || last_part.ends_with('\\') {
+            (current_dir.join(&path), "".to_string())
+        } else if let Some(parent) = path.parent() {
             (current_dir.join(parent), path.file_name().unwrap_or_default().to_string_lossy().to_string())
         } else {
             (current_dir.clone(), last_part.to_string())
@@ -98,18 +101,20 @@ impl Autocompleter {
                     if file_name.starts_with(&prefix) {
                         let is_dir = entry.file_type().await.map_or(false, |ft| ft.is_dir());
                         
-                        let mut new_last_part = if let Some(parent) = path.parent() {
-                            parent.join(file_name.as_ref()).to_string_lossy().into_owned()
+                        let new_last_part = if last_part.ends_with('/') || last_part.ends_with('\\') {
+                            format!("{}{}", last_part, file_name)
                         } else {
                             file_name.into_owned()
                         };
 
-                        if is_dir {
-                            new_last_part.push('/');
-                        }
+                        let mut final_suggestion = if is_dir && !new_last_part.ends_with('/') {
+                            format!("{}/", new_last_part)
+                        } else {
+                            new_last_part
+                        };
 
                         let mut new_parts = base_parts.clone();
-                        new_parts.push(new_last_part);
+                        new_parts.push(final_suggestion);
 
                         if let Ok(joined) = shlex::try_join(new_parts.iter().map(|s| s.as_str())) {
                             fs_suggestions.push(joined);
@@ -192,7 +197,6 @@ mod tests {
         fs::write(temp_dir.join("parent_dir/file.txt"), "").await.unwrap();
 
         let suggestions = autocompleter.get_suggestions("cd parent_dir/", &temp_dir).await;
-        println!("suggestions: {:?}", suggestions);
         assert!(suggestions.contains(&"cd parent_dir/child_dir/".to_string()));
         assert!(suggestions.contains(&"cd parent_dir/file.txt".to_string()));
 
