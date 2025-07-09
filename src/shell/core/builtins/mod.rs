@@ -7,3 +7,4 @@ pub mod rm;
 pub mod cp;
 pub mod mv;
 pub mod echo;
+pub mod grep;

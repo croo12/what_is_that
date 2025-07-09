@@ -126,7 +126,8 @@ mod tests {
         let mut shell_core = ShellCore::new();
         let command = "nonexistent_command_12345";
         let output = shell_core.execute_shell_command(command).await;
-        assert!(output.contains("command not found"));
+        // The new error format is "Error: <command>: command not found"
+        assert!(output.contains("Error: nonexistent_command_12345: command not found"));
         Ok(())
     }
 
