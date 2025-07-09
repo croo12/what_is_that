@@ -17,6 +17,6 @@ pub async fn cd_builtin(current_dir: &mut PathBuf, args: &[&str]) -> String {
         return format!("cd: '{}': Not a directory\n", new_dir);
     }
 
-    *current_dir = path.canonicalize().unwrap();
+    *current_dir = dunce::canonicalize(&path).unwrap();
     String::new()
 }

@@ -20,17 +20,15 @@ use tokio::task;
 fn setup_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
 
-    // Install my own font (e.g. a Japanese font):
+    // Install D2Coding font
     fonts.font_data.insert(
-        "korean_font".to_owned(),
-        egui::FontData::from_static(include_bytes!("C:/Windows/Fonts/malgunbd.ttf")), // Malgun Gothic Bold
+        "d2coding_font".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/Hack-Regular.ttf")),
     );
 
-    // Put my font first (highest priority):
-    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "korean_font".to_owned());
-
-    // Put my font as last resort for monospace fonts:
-    fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push("korean_font".to_owned());
+    // Set D2Coding as the first priority for both proportional and monospace fonts
+    fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "d2coding_font".to_owned());
+    fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().insert(0, "d2coding_font".to_owned());
 
     ctx.set_fonts(fonts);
 }

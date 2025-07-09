@@ -21,7 +21,7 @@ impl ShellCore {
     /// to the current working directory of the process.
     pub fn new() -> Self {
         let mut core = Self {
-            current_dir: env::current_dir().unwrap().canonicalize().unwrap(),
+            current_dir: dunce::canonicalize(env::current_dir().unwrap()).unwrap(),
             git_info: None,
         };
         core.update_git_info();
@@ -73,7 +73,7 @@ mod tests {
     #[tokio::test]
     async fn test_ls_builtin_current_dir() -> io::Result<()> {
         let mut shell_core = ShellCore::new();
-        shell_core.current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).canonicalize().unwrap();
+        shell_core.current_dir = dunce::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).unwrap();
         let output = super::builtins::ls::ls_builtin(&shell_core.current_dir, &[]).await;
         assert!(output.contains("Cargo.toml"));
         assert!(output.contains("src"));
@@ -94,7 +94,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_shell_command_ls() -> io::Result<()> {
         let mut shell_core = ShellCore::new();
-        shell_core.current_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).canonicalize().unwrap();
+        shell_core.current_dir = dunce::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR"))).unwrap();
         println!("DEBUG: shell_core.current_dir = {:?}", shell_core.current_dir);
         let output = shell_core.execute_shell_command("ls").await;
         println!("Test Output: {}", output);
@@ -135,12 +135,12 @@ mod tests {
     async fn test_cd_builtin() -> io::Result<()> {
         std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
         let mut shell_core = ShellCore::new();
-        let initial_dir = shell_core.current_dir.canonicalize().unwrap();
+        let initial_dir = dunce::canonicalize(&shell_core.current_dir).unwrap();
 
         // Test cd to a valid directory
         shell_core.execute_shell_command("cd src").await;
-        assert_eq!(shell_core.current_dir, initial_dir.join("src").canonicalize().unwrap());
-        assert_eq!(shell_core.get_current_dir(), initial_dir.join("src").canonicalize().unwrap());
+        assert_eq!(shell_core.current_dir, dunce::canonicalize(initial_dir.join("src")).unwrap());
+        assert_eq!(shell_core.get_current_dir(), dunce::canonicalize(initial_dir.join("src")).unwrap());
 
         // Test cd back to the parent directory
         shell_core.execute_shell_command("cd ..").await;
@@ -157,7 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_current_dir() -> io::Result<()> {
-        let initial_dir = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let initial_dir = dunce::canonicalize(std::env::current_dir().unwrap()).unwrap();
         let shell_core = ShellCore::new();
         assert_eq!(shell_core.get_current_dir(), initial_dir);
         Ok(())

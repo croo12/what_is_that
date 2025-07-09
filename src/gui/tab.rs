@@ -52,7 +52,7 @@ impl ShellTab {
         let git_info_display_arc_clone_for_spawn = self.git_info_display.clone();
         task::spawn(async move {
             let shell_core = shell_core_arc_clone.lock().await;
-            let new_dir = shell_core.get_current_dir().display().to_string();
+            let new_dir = shell_core.get_current_dir().to_string_lossy().into_owned();
             *current_dir_display_arc_clone_for_spawn.lock().await = new_dir;
 
             let git_info_str = if let Some(info) = &shell_core.git_info {
@@ -222,7 +222,7 @@ impl ShellTab {
             {
                 let shell_core = shell_core_arc.lock().await;
                 // The git info is already updated inside execute_shell_command
-                let new_dir = shell_core.get_current_dir().display().to_string();
+                let new_dir = shell_core.get_current_dir().to_string_lossy().into_owned();
                 *current_dir_display_arc.lock().await = new_dir;
                 
                 let git_info_str = if let Some(info) = &shell_core.git_info {
