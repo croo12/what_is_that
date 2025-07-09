@@ -2557,6 +2557,7 @@ dependencies = [
  "raw-window-handle 0.5.2",
  "rfd",
  "shlex",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

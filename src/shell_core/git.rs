@@ -72,10 +72,11 @@ mod tests {
         let signature = Signature::now("Test User", "test@example.com").unwrap();
 
         // Create an initial commit
-        let mut index = repo.index().unwrap();
-        let oid = index.write_tree().unwrap();
-        let tree = repo.find_tree(oid).unwrap();
-        repo.commit(Some("HEAD"), &signature, &signature, "Initial commit", &tree, &[]).unwrap();
+        let tree_id = {
+            let mut index = repo.index().unwrap();
+            index.write_tree().unwrap()
+        };
+        repo.commit(Some("HEAD"), &signature, &signature, "Initial commit", &repo.find_tree(tree_id).unwrap(), &[]).unwrap();
         
         repo
     }
@@ -101,19 +102,18 @@ mod tests {
     fn test_has_changes_detects_modification() {
         let temp_dir = tempfile::tempdir().unwrap();
         let repo_path = temp_dir.path();
-        create_test_repo(repo_path);
+        let repo = create_test_repo(repo_path);
 
-        // Modify a file
+        // Create a file and add it to the index
         let file_path = repo_path.join("test.txt");
         let mut file = File::create(&file_path).unwrap();
         writeln!(file, "hello").unwrap();
         
-        // We need to add the file to the index to be tracked
-        let mut index = Repository::open(repo_path).unwrap().index().unwrap();
+        let mut index = repo.index().unwrap();
         index.add_path(Path::new("test.txt")).unwrap();
         index.write().unwrap();
 
-        // Now modify it again
+        // Now modify it
         writeln!(file, "world").unwrap();
 
         let info = get_git_info(repo_path).unwrap();
