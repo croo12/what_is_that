@@ -3,25 +3,36 @@
 
 use std::env;
 use std::path::PathBuf;
+use crate::shell_core::git::GitInfo;
 
 pub mod builtins;
 pub mod command_executor;
 pub mod autocompletion;
 pub mod external;
+pub mod git;
 
 /// `ShellCore` manages the shell's state, including the current working directory
 /// and provides methods for executing commands.
 pub struct ShellCore {
     current_dir: PathBuf,
+    pub git_info: Option<GitInfo>,
 }
 
 impl ShellCore {
     /// Creates a new `ShellCore` instance, initializing the current directory
     /// to the current working directory of the process.
     pub fn new() -> Self {
-        Self {
+        let mut core = Self {
             current_dir: env::current_dir().unwrap().canonicalize().unwrap(),
-        }
+            git_info: None,
+        };
+        core.update_git_info();
+        core
+    }
+
+    /// Updates the Git information based on the current directory.
+    pub fn update_git_info(&mut self) {
+        self.git_info = git::get_git_info(&self.current_dir);
     }
 
     /// Returns the current working directory of the shell.
@@ -47,7 +58,10 @@ impl ShellCore {
     ///
     /// A `String` containing the output of the executed command.
     pub async fn execute_shell_command(&mut self, command_str: &str) -> String {
-        command_executor::execute_shell_command(&mut self.current_dir, command_str).await
+        let result = command_executor::execute_shell_command(&mut self.current_dir, command_str).await;
+        // After a command, especially `cd`, the git info might have changed.
+        self.update_git_info();
+        result
     }
 }
 

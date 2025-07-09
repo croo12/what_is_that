@@ -18,6 +18,7 @@ pub struct ShellTab {
     shell_core: Arc<Mutex<ShellCore>>,
     command_history: CommandHistory,
     current_dir_display: Arc<Mutex<String>>,
+    git_info_display: Arc<Mutex<String>>,
     // autocompleter: Autocompleter,
     suggestions: Arc<Mutex<Vec<String>>>, 
     active_suggestion_index: Arc<Mutex<Option<usize>>>,
@@ -38,6 +39,7 @@ impl ShellTab {
             shell_core,
             command_history,
             current_dir_display: Arc::new(Mutex::new(current_dir)),
+            git_info_display: Arc::new(Mutex::new(String::new())),
             // autocompleter,
             suggestions: Arc::new(Mutex::new(Vec::new())),
             active_suggestion_index: Arc::new(Mutex::new(None)),
@@ -46,13 +48,22 @@ impl ShellTab {
 
     /// Renders the UI for this tab.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
-        // Asynchronously update current_dir_display
+        // Asynchronously update current_dir_display and git_info_display
         let shell_core_arc_clone = self.shell_core.clone();
         let current_dir_display_arc_clone_for_spawn = self.current_dir_display.clone();
+        let git_info_display_arc_clone_for_spawn = self.git_info_display.clone();
         task::spawn(async move {
             let shell_core = shell_core_arc_clone.lock().await;
             let new_dir = shell_core.get_current_dir().display().to_string();
             *current_dir_display_arc_clone_for_spawn.lock().await = new_dir;
+
+            let git_info_str = if let Some(info) = &shell_core.git_info {
+                let changes_indicator = if info.has_changes { "*" } else { "" };
+                format!("({}{})", info.branch_name, changes_indicator)
+            } else {
+                String::new()
+            };
+            *git_info_display_arc_clone_for_spawn.lock().await = git_info_str;
         });
 
         let mut input_has_focus = false;
@@ -84,7 +95,9 @@ impl ShellTab {
 
         // Central panel for output
         egui::CentralPanel::default().show(ui.ctx(), |ui| {
-            ui.label(format!("Current Directory: {}", self.current_dir_display.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Loading...)".to_string())));
+            let dir_str = self.current_dir_display.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Loading...)".to_string());
+            let git_str = self.git_info_display.try_lock().map(|s| s.clone()).unwrap_or_default();
+            ui.label(format!("Current Directory: {} {}", dir_str, git_str));
             ui.separator();
 
             egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
@@ -120,13 +133,15 @@ impl ShellTab {
         let output_arc = self.output.clone();
         let shell_core_arc = self.shell_core.clone();
         let current_dir_display_arc = self.current_dir_display.clone();
+        let git_info_display_arc = self.git_info_display.clone();
 
         task::spawn(async move {
             {
                 let mut output = output_arc.lock().await;
                 let current_dir = current_dir_display_arc.lock().await;
+                let git_info = git_info_display_arc.lock().await;
                 let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                output.push_str(&format!("\n[{}] {} $ {}\n", timestamp, current_dir, &input_command));
+                output.push_str(&format!("\n[{}] {} {} $ {}\n", timestamp, *current_dir, *git_info, &input_command));
             }
 
             let command_output = {
@@ -142,8 +157,17 @@ impl ShellTab {
 
             {
                 let shell_core = shell_core_arc.lock().await;
+                // The git info is already updated inside execute_shell_command
                 let new_dir = shell_core.get_current_dir().display().to_string();
                 *current_dir_display_arc.lock().await = new_dir;
+                
+                let git_info_str = if let Some(info) = &shell_core.git_info {
+                    let changes_indicator = if info.has_changes { "*" } else { "" };
+                    format!("({}{})", info.branch_name, changes_indicator)
+                } else {
+                    String::new()
+                };
+                *git_info_display_arc.lock().await = git_info_str;
             }
         });
 

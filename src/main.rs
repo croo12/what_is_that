@@ -82,7 +82,7 @@ async fn main() -> eframe::Result<()> {
             });
 
             // Create and return the main GUI application instance.
-            Ok(Box::new(gui::GuiApp::new(tx)))
+            Box::new(gui::GuiApp::new(tx))
         }),
     );
 
