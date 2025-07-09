@@ -1,54 +1,35 @@
 # 리팩토링 계획: UI와 핵심 로직의 완전한 분리
 
-## 1. 문제점
+... (이전 내용은 생략) ...
 
-현재 `src` 디렉토리 바로 아래에 `shell_core`, `features`, `gui`, `command_history`가 함께 위치하여, 애플리케이션의 두 축인 '셸 로직'과 'GUI'의 경계가 모호하다.
+# 기능 구현 계획: 자동 완성 UI
 
-## 2. 개선 목표
+## 1. 목표
 
-프로젝트 전체 아키텍처를 "라이브러리 + 실행 파일" 패턴과 유사하게 개선한다. 셸의 모든 핵심 로직을 하나의 큰 `shell` 모듈로 묶고, `gui`는 이 모듈을 사용하는 소비자로 만들어 책임과 역할을 명확히 분리한다.
+사용자 입력 필드에 자동 완성 제안을 "흐릿한 글씨(ghost text)"로 표시하고, 사용자가 `Tab` 키를 누르면 해당 제안으로 입력을 완성하는 기능을 구현한다.
 
-## 3. 리팩토링 계획
+## 2. 세부 실행 단계
 
-### 변경 전 구조:
+1.  **상태 관리 (`gui/tab.rs`):**
+    -   `ShellTab` 구조체에 주석 처리된 `autocompleter`를 활성화하고, `shell` 모듈 구조에 맞게 경로를 수정한다.
+    -   자동 완성 제안 중 최상위 항목(흐릿한 글씨로 표시될 텍스트)을 저장할 상태 변수(예: `ghost_text: Arc<Mutex<String>>`)를 추가한다.
 
-```
-src/
-├── shell_core/
-├── features/
-├── gui/
-├── command_history/
-└── main.rs
-```
+2.  **비동기 제안 요청 (`gui/tab.rs`):**
+    -   `ShellTab::ui` 메소드 내에서 사용자 입력(`self.input`)이 변경될 때마다 `tokio::task`를 생성한다.
+    -   이 비동기 작업은 `autocompleter.get_suggestions()`를 호출하여 제안 목록을 가져온다.
+    -   가져온 제안 중 첫 번째 항목을 `ghost_text` 상태에 업데이트한다.
 
-### 변경 후 구조:
+3.  **커스텀 UI 렌더링 (`gui/tab.rs`):**
+    -   `egui::TextEdit` 위젯의 `layouter` 메소드를 사용���여 텍스트 렌더링을 직접 제어한다.
+    -   커스텀 layouter 함수는 다음 두 부분을 나누어 그린다:
+        1.  사용자가 실제로 입력한 텍스트: 일반 색상으로 렌더링한다.
+        2.  제안의 나머지 부분 (ghost text): 회색과 같은 흐릿한 색상으로 렌더링한다.
+    -   이 두 부분을 합친 `Galley`를 `TextEdit` 위젯에 제공하여 흐릿한 자동 완성 텍스트가 뒤에 있는 것처럼 보이게 한다.
 
-```
-src/
-├── shell/
-│   ├── mod.rs      (셸 라이브러리의 루트)
-│   ├── core/       (기존 shell_core)
-│   ├── features/   (부가 기능)
-│   └── history/    (기존 command_history)
-├── gui/
-│   └── ...
-└── main.rs         (두 모듈을 연결하여 애플리케이션 실행)
-```
+4.  **`Tab` 키 입력 처리 (`gui/tab.rs`):**
+    -   `ShellTab::ui` 메소드에서 `Tab` 키 입력을 감지한다.
+    -   `Tab` 키가 눌렸고, 표시되고 있는 제안이 있다면, `self.input`의 값을 해당 제안 텍스트 전체로 교체한다.
+    -   `Tab` 키의 기본 동작(포커스 이동)을 막아 오직 자동 완성 기능으로만 작동하도록 한다.
 
-## 4. 세부 실행 단계
-
-1.  **디렉토리 생�� 및 이동:**
-    -   `src/shell` 디렉토리를 생성한다.
-    -   `src/shell_core/`를 `src/shell/core/`로 이동 및 개명한다.
-    -   `src/features/`를 `src/shell/features/`로 이동한다.
-    -   `src/command_history/`를 `src/shell/history/`로 이동 및 개명한다.
-
-2.  **모듈 선언 수정:**
-    -   `src/main.rs`에 `pub mod shell;`을 추가하고, 기존 모듈 선언(`shell_core`, `features`, `command_history`)을 제거한다.
-    -   `src/shell/mod.rs` 파일을 생성하여 `core`, `features`, `history`를 하위 모듈로 선언한다.
-
-3.  **`use` 경로 전면 수정:**
-    -   프로젝트 전체에서 `crate::shell_core`, `crate::features`, `crate::command_history`를 사용하던 모든 경로를 `crate::shell::core`, `crate::shell::features`, `crate::shell::history` 등으로 수정한다.
-
-4.  **검증:**
-    -   `cargo check`와 `cargo test`를 통해 모든 변경사항이 올바르게 적용되었는지 확인한다.
+5.  **검증:**
+    -   `cargo check`로 컴파일 오류를 확인하고, `cargo run`으로 애플리케이션을 실행하여 기능이 올바르게 작동하는지 테스트한다.

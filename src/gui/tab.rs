@@ -8,7 +8,7 @@ use chrono::Local;
 
 use crate::shell::history::CommandHistory;
 use crate::shell::core::ShellCore;
-// use crate::shell::features::autocompletion::Autocompleter;
+use crate::shell::features::autocompletion::Autocompleter;
 
 /// `ShellTab` holds the state for a single tab, including input, output, and shell core.
 pub struct ShellTab {
@@ -19,9 +19,8 @@ pub struct ShellTab {
     command_history: CommandHistory,
     current_dir_display: Arc<Mutex<String>>,
     git_info_display: Arc<Mutex<String>>,
-    // autocompleter: Autocompleter,
-    suggestions: Arc<Mutex<Vec<String>>>, 
-    active_suggestion_index: Arc<Mutex<Option<usize>>>,
+    autocompleter: Autocompleter,
+    ghost_text: Arc<Mutex<String>>,
 }
 
 impl ShellTab {
@@ -29,7 +28,7 @@ impl ShellTab {
     pub fn new(title: String) -> Self {
         let shell_core = Arc::new(Mutex::new(ShellCore::new()));
         let command_history = CommandHistory::new();
-        // let autocompleter = Autocompleter::new(command_history.clone());
+        let autocompleter = Autocompleter::new(command_history.clone());
         let current_dir = "Loading...".to_string();
 
         Self {
@@ -40,9 +39,8 @@ impl ShellTab {
             command_history,
             current_dir_display: Arc::new(Mutex::new(current_dir)),
             git_info_display: Arc::new(Mutex::new(String::new())),
-            // autocompleter,
-            suggestions: Arc::new(Mutex::new(Vec::new())),
-            active_suggestion_index: Arc::new(Mutex::new(None)),
+            autocompleter,
+            ghost_text: Arc::new(Mutex::new(String::new())),
         }
     }
 
@@ -66,14 +64,78 @@ impl ShellTab {
             *git_info_display_arc_clone_for_spawn.lock().await = git_info_str;
         });
 
-        let mut input_has_focus = false;
+        // Handle Tab key press for autocompletion BEFORE the main UI panel
+        if ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+            if let Ok(ghost_text) = self.ghost_text.try_lock() {
+                if !ghost_text.is_empty() && ghost_text.starts_with(&self.input) {
+                    self.input = ghost_text.clone();
+                    // Consume the Tab key event so it doesn't trigger other behaviors
+                    ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Tab));
+                }
+            }
+        }
+
+        let mut input_id = None;
 
         // Bottom panel for command input
         egui::TopBottomPanel::bottom("input_panel").show(ui.ctx(), |ui| {
             ui.horizontal(|ui| {
                 ui.label("Command:");
-                let response = ui.add(egui::TextEdit::singleline(&mut self.input).desired_width(f32::INFINITY));
-                input_has_focus = ui.memory(|mem| mem.has_focus(response.id));
+
+                let mut layouter = |ui: &egui::Ui, string: &str, _wrap_width: f32| {
+                    let mut layout_job = egui::text::LayoutJob::default();
+                    let default_text_format = egui::TextFormat {
+                        color: ui.style().visuals.text_color(),
+                        ..Default::default()
+                    };
+
+                    if let Ok(ghost_text) = self.ghost_text.try_lock() {
+                        if !ghost_text.is_empty() && ghost_text.starts_with(string) && !string.is_empty() {
+                            // User-typed part
+                            layout_job.append(string, 0.0, default_text_format.clone());
+                            // Ghost text part
+                            let suggestion_part = &ghost_text[string.len()..];
+                            layout_job.append(
+                                suggestion_part,
+                                0.0,
+                                egui::TextFormat {
+                                    color: ui.style().visuals.weak_text_color(),
+                                    ..Default::default()
+                                },
+                            );
+                        } else {
+                            layout_job.append(string, 0.0, default_text_format);
+                        }
+                    } else {
+                         layout_job.append(string, 0.0, default_text_format);
+                    }
+                    ui.fonts(|f| f.layout_job(layout_job))
+                };
+
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.input)
+                        .desired_width(f32::INFINITY)
+                        .layouter(&mut layouter)
+                );
+                input_id = Some(response.id);
+
+                if response.changed() {
+                    let input_clone = self.input.clone();
+                    let autocompleter_clone = self.autocompleter.clone();
+                    let shell_core_clone = self.shell_core.clone();
+                    let ghost_text_clone = self.ghost_text.clone();
+
+                    task::spawn(async move {
+                        let shell_core = shell_core_clone.lock().await;
+                        let suggestions = autocompleter_clone.get_suggestions(&input_clone, &shell_core.get_current_dir()).await;
+                        let mut ghost_text = ghost_text_clone.lock().await;
+                        if let Some(first_suggestion) = suggestions.get(0) {
+                            *ghost_text = first_suggestion.clone();
+                        } else {
+                            ghost_text.clear();
+                        }
+                    });
+                }
 
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     self.execute_command();
@@ -106,18 +168,20 @@ impl ShellTab {
             });
         });
 
-        if input_has_focus {
-            ui.input(|i| {
-                if i.key_pressed(egui::Key::ArrowUp) {
-                    if let Some(cmd) = self.command_history.navigate_up() {
-                        self.input = cmd.to_owned();
+        if let Some(id) = input_id {
+            if ui.memory(|mem| mem.has_focus(id)) {
+                ui.input(|i| {
+                    if i.key_pressed(egui::Key::ArrowUp) {
+                        if let Some(cmd) = self.command_history.navigate_up() {
+                            self.input = cmd.to_owned();
+                        }
+                    } else if i.key_pressed(egui::Key::ArrowDown) {
+                        if let Some(cmd) = self.command_history.navigate_down() {
+                            self.input = cmd.to_owned();
+                        }
                     }
-                } else if i.key_pressed(egui::Key::ArrowDown) {
-                    if let Some(cmd) = self.command_history.navigate_down() {
-                        self.input = cmd.to_owned();
-                    }
-                }
-            });
+                });
+            }
         }
     }
 
@@ -172,7 +236,10 @@ impl ShellTab {
         });
 
         self.input.clear();
-        self.suggestions.try_lock().unwrap().clear(); // Clear suggestions after command execution
-        *self.active_suggestion_index.try_lock().unwrap() = None;
+        // Clear ghost text after command execution
+        let ghost_text_clone = self.ghost_text.clone();
+        task::spawn(async move {
+            ghost_text_clone.lock().await.clear();
+        });
     }
 }
