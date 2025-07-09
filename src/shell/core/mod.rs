@@ -149,7 +149,7 @@ mod tests {
 
         // Test cd to a non-existent directory
         let output = shell_core.execute_shell_command("cd nonexistent_dir_123").await;
-        assert!(output.contains("No such file or directory"));
+        assert!(output.contains("cd: 'nonexistent_dir_123': No such file or directory"));
         assert_eq!(shell_core.current_dir, initial_dir);
 
         Ok(())

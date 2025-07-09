@@ -1,6 +1,6 @@
 //! This module provides functionality for interacting with Git repositories.
 
-use git2::{Repository, Status, StatusOptions};
+use git2::{Repository, StatusOptions};
 use std::path::Path;
 
 /// Represents information about a Git repository.

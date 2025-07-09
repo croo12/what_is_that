@@ -56,10 +56,9 @@ fn parse_line(line: &str) -> Result<Pipeline, String> {
 // --- New Execution Logic ---
 
 async fn execute_pipeline_async(current_dir: &mut PathBuf, pipeline: Pipeline) -> Result<String> {
-    let mut input_data = Vec::new(); // Start with empty input for the first command
+    let mut input_data = Vec::new();
     let mut final_output = String::new();
 
-    // Destructure the pipeline to avoid partial move errors
     let Pipeline { commands, redirection } = pipeline;
     let num_commands = commands.len();
 
@@ -68,17 +67,47 @@ async fn execute_pipeline_async(current_dir: &mut PathBuf, pipeline: Pipeline) -
         let args: Vec<&str> = command.args.iter().map(AsRef::as_ref).collect();
 
         let output_data = match command.name.as_str() {
+            // Built-ins that produce stdout
+            "ls" => builtins::ls::ls_builtin(current_dir, &args).await.into_bytes(),
             "echo" => builtins::echo::echo_builtin(&args).await.into_bytes(),
+            "ping" => builtins::ping::ping_builtin(&args).await.into_bytes(),
             "grep" => {
-                // Clone input_data to avoid moving it, ensuring ownership consistency across match arms.
                 let cursor = Cursor::new(input_data.clone());
                 builtins::grep::grep_builtin(&args, Box::new(cursor)).await?.into_bytes()
             }
+            
+            // Built-ins that modify state but don't pipe stdout
             "cd" if i == 0 => {
-                final_output = builtins::cd::cd_builtin(current_dir, &args).await;
+                let result = builtins::cd::cd_builtin(current_dir, &args).await;
+                if !result.is_empty() {
+                    // If cd returns anything, it's an error message.
+                    return Ok(result);
+                }
                 Vec::new()
             }
-            _ => { // External commands
+            "open" if i == 0 => {
+                final_output = builtins::open::open_builtin(current_dir, &args).await;
+                Vec::new()
+            }
+            "mkdir" if i == 0 => {
+                final_output = builtins::mkdir::mkdir_builtin(current_dir, &args).await;
+                Vec::new()
+            }
+            "rm" if i == 0 => {
+                final_output = builtins::rm::rm_builtin(current_dir, &args).await;
+                Vec::new()
+            }
+            "cp" if i == 0 => {
+                final_output = builtins::cp::cp_builtin(current_dir, &args).await;
+                Vec::new()
+            }
+            "mv" if i == 0 => {
+                final_output = builtins::mv::mv_builtin(current_dir, &args).await;
+                Vec::new()
+            }
+
+            // External commands
+            _ => {
                 let mut cmd = TokioCommand::new(&command.name);
                 cmd.args(&command.args)
                    .current_dir(&*current_dir)
@@ -88,13 +117,10 @@ async fn execute_pipeline_async(current_dir: &mut PathBuf, pipeline: Pipeline) -
 
                 let mut child = match cmd.spawn() {
                     Ok(child) => child,
-                    Err(e) => {
-                        if e.kind() == std::io::ErrorKind::NotFound {
-                            return Err(anyhow!("{}: command not found", command.name));
-                        } else {
-                            return Err(e).context(format!("Failed to spawn command '{}'", command.name));
-                        }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return Err(anyhow!("{}: command not found", command.name));
                     }
+                    Err(e) => return Err(e).context(format!("Failed to spawn command '{}'", command.name)),
                 };
                 
                 if let Some(mut stdin) = child.stdin.take() {
@@ -137,22 +163,6 @@ pub async fn execute_shell_command(current_dir: &mut PathBuf, command_str: &str)
         Err(e) => return e,
     };
     
-    if pipeline.commands.len() == 1 && pipeline.redirection.is_none() {
-        let command = &pipeline.commands[0];
-        let args: Vec<&str> = command.args.iter().map(AsRef::as_ref).collect();
-        match command.name.as_str() {
-            "cd" => return builtins::cd::cd_builtin(current_dir, &args).await,
-            "open" => return builtins::open::open_builtin(current_dir, &args).await,
-            "ls" => return builtins::ls::ls_builtin(current_dir, &args).await,
-            "mkdir" => return builtins::mkdir::mkdir_builtin(current_dir, &args).await,
-            "rm" => return builtins::rm::rm_builtin(current_dir, &args).await,
-            "cp" => return builtins::cp::cp_builtin(current_dir, &args).await,
-            "mv" => return builtins::mv::mv_builtin(current_dir, &args).await,
-            "ping" => return builtins::ping::ping_builtin(&args).await,
-            _ => {}
-        }
-    }
-
     match execute_pipeline_async(current_dir, pipeline).await {
         Ok(output) => output,
         Err(e) => format!("Error: {}", e),
@@ -169,8 +179,6 @@ mod tests {
     #[tokio::test]
     async fn test_builtin_grep_in_pipeline() -> io::Result<()> {
         let mut current_dir = env::current_dir()?;
-        // shlex will treat "hello\nworld\nhello rust" as a single argument for echo.
-        // The `echo` builtin will then process the `\n` and `grep` will receive multi-line input.
         let command = "echo \"hello\\nworld\\nhello rust\" | grep hello";
         let output = execute_shell_command(&mut current_dir, command).await;
         assert_eq!(output.trim(), "hello\nhello rust");
@@ -189,6 +197,22 @@ mod tests {
 
         let file_content = fs::read_to_string(current_dir.join(test_file))?;
         assert_eq!(file_content.trim(), "apple\napple pie");
+
+        fs::remove_file(current_dir.join(test_file))?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ls_redirection() -> io::Result<()> {
+        let mut current_dir = env::current_dir()?;
+        let test_file = "ls_output.txt";
+        
+        let output = execute_shell_command(&mut current_dir, &format!("ls > {}", test_file)).await;
+        assert!(output.is_empty(), "Output to shell should be empty for redirection");
+
+        let file_content = fs::read_to_string(current_dir.join(test_file))?;
+        assert!(file_content.contains("Cargo.toml"), "File should contain Cargo.toml");
+        assert!(file_content.contains("src"), "File should contain src");
 
         fs::remove_file(current_dir.join(test_file))?;
         Ok(())
