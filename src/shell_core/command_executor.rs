@@ -26,6 +26,7 @@ pub async fn execute_shell_command(current_dir: &mut PathBuf, command_str: &str)
         "rm" => builtins::rm::rm_builtin(current_dir, &args).await,
         "cp" => builtins::cp::cp_builtin(current_dir, &args).await,
         "mv" => builtins::mv::mv_builtin(current_dir, &args).await,
+        "echo" => builtins::echo::echo_builtin(&args).await,
         _ => external::execute_external_command(command_name, &args).await,
     }
 }
@@ -60,20 +61,13 @@ mod tests {
         Ok(())
     }
 
-    /*
     #[tokio::test]
     async fn test_execute_echo_command() -> io::Result<()> {
         let mut current_dir = env::current_dir().unwrap();
-        let command = if cfg!(windows) {
-            "echo Hello from external!"
-        } else {
-            "echo Hello from external!"
-        };
-        let output = execute_shell_command(&mut current_dir, command).await;
-        assert!(output.contains("Hello from external!"));
+        let output = execute_shell_command(&mut current_dir, "echo Hello from built-in!").await;
+        assert_eq!(output, "Hello from built-in!");
         Ok(())
     }
-    */
 
     #[tokio::test]
     async fn test_execute_unknown_command() -> io::Result<()> {
