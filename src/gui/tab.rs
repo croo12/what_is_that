@@ -6,9 +6,9 @@ use tokio::sync::Mutex;
 use tokio::task;
 use chrono::Local;
 
-use crate::command_history::CommandHistory;
-use crate::shell_core::ShellCore;
-// use crate::shell_core::autocompletion::Autocompleter;
+use crate::shell::history::CommandHistory;
+use crate::shell::core::ShellCore;
+// use crate::shell::features::autocompletion::Autocompleter;
 
 /// `ShellTab` holds the state for a single tab, including input, output, and shell core.
 pub struct ShellTab {

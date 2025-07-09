@@ -4,7 +4,7 @@ mod builtin_provider;
 mod history_provider;
 mod path_provider;
 
-use crate::command_history::CommandHistory;
+use crate::shell::history::CommandHistory;
 use std::path::PathBuf;
 
 /// Generates command suggestions based on the current input and context.

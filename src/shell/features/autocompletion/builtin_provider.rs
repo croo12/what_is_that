@@ -18,8 +18,8 @@ pub(super) async fn get_builtin_suggestions(input: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::command_history::CommandHistory;
-    use crate::shell_core::autocompletion::Autocompleter;
+    use crate::shell::history::CommandHistory;
+    use crate::shell::features::autocompletion::Autocompleter;
     use std::path::PathBuf;
 
     #[tokio::test]

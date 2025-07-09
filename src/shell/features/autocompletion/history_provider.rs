@@ -1,6 +1,6 @@
 //! Suggests commands from history.
 
-use crate::command_history::CommandHistory;
+use crate::shell::history::CommandHistory;
 
 pub(super) async fn get_history_suggestions(
     command_history: &CommandHistory,
@@ -23,8 +23,8 @@ pub(super) async fn get_history_suggestions(
 
 #[cfg(test)]
 mod tests {
-    use crate::command_history::CommandHistory;
-    use crate::shell_core::autocompletion::Autocompleter;
+    use crate::shell::history::CommandHistory;
+    use crate::shell::features::autocompletion::Autocompleter;
     use std::path::PathBuf;
 
     #[tokio::test]

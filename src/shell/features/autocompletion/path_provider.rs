@@ -70,8 +70,8 @@ pub(super) async fn get_filesystem_suggestions(
 
 #[cfg(test)]
 mod tests {
-    use crate::command_history::CommandHistory;
-    use crate::shell_core::autocompletion::Autocompleter;
+    use crate::shell::history::CommandHistory;
+    use crate::shell::features::autocompletion::Autocompleter;
     use std::env;
     use tokio::fs;
     use std::path::PathBuf;

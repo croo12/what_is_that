@@ -1,8 +1,8 @@
 //! This module provides the core logic for executing shell commands.
 
 use std::path::PathBuf;
-use crate::shell_core::builtins;
-use crate::shell_core::external;
+use crate::shell::core::builtins;
+use crate::shell::core::external;
 
 pub async fn execute_shell_command(current_dir: &mut PathBuf, command_str: &str) -> String {
     let parts = match shlex::split(command_str) {
