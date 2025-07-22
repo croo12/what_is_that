@@ -11,6 +11,7 @@ To encapsulate the logic for commands that are fundamental to the shell's operat
 The following built-in commands are currently implemented:
 
 *   `alias`: Creates, displays, or removes command aliases. Supports `alias name=value` to create, `alias` to list all, and `unalias name` to remove.
+*   `cat`: Concatenates and displays file contents.
 *   `cd`: Changes the current working directory.
 *   `cp`: Copies files.
 *   `echo`: Displays a line of text.

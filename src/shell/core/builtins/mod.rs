@@ -9,3 +9,4 @@ pub mod mv;
 pub mod echo;
 pub mod grep;
 pub mod alias;
+pub mod cat;

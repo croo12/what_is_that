@@ -76,6 +76,12 @@ async fn execute_pipeline_async(shell_core: &mut ShellCore, pipeline: Pipeline) 
                 let cursor = Cursor::new(input_data.clone());
                 builtins::grep::grep_builtin(&args, Box::new(cursor)).await?.into_bytes()
             }
+            "cat" => {
+                match builtins::cat::cat_builtin(&shell_core.current_dir, &args).await {
+                    Ok(output) => output.into_bytes(),
+                    Err(e) => return Err(e),
+                }
+            }
             "alias" if i == 0 => {
                 final_output = builtins::alias::alias_builtin(&mut shell_core.aliases, &args);
                 Vec::new()

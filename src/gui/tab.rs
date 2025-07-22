@@ -164,7 +164,8 @@ impl ShellTab {
 
             egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui_scroll| {
                 let output_str = self.output.try_lock().map(|s| s.clone()).unwrap_or_else(|_|"(Output busy...)".to_string());
-                ui_scroll.label(egui::RichText::new(&output_str).monospace());
+                ui_scroll.set_width(ui_scroll.available_width());
+                ui_scroll.add(egui::Label::new(egui::RichText::new(&output_str).monospace()).wrap(true));
             });
         });
 
