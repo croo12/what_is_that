@@ -10,7 +10,7 @@ To provide a user-friendly and visually interactive front-end for the underlying
 
 The GUI has been refactored into a more modular structure for better organization and maintainability:
 *   **`app.rs`**: Contains the main `GuiApp` struct and the core application state.
-*   **`tab.rs`**: Defines the UI and state for a single shell tab.
+*   **`tab.rs`**: Defines the UI and state for a single shell tab, **including its own `ShellCore` instance to manage shell-specific states like the current directory and command aliases.**
 *   **`tab_bar.rs`**: Manages the rendering and interaction of the tab bar.
 
 The GUI currently features:
@@ -22,9 +22,7 @@ The GUI currently features:
 
 ## To-Dos
 
-*   **Syntax Highlighting for Output:** Basic output formatting (errors, success) implemented.
-*   **Clickable Links in Output:** Make URLs and file paths in the output clickable.
-*   **Customizable Themes:** Allow users to select different color themes for the GUI.
-*   **Resizable Panes:** Enable resizing of the input and output areas.
-*   **Improved Scrollbar Experience:** Enhance the scrollbar for very long outputs.
+*   **File System Explorer UI:** Integrate a graphical file system browser for intuitive directory navigation and file operations.
+*   **Customizable Themes & Fonts:** Allow users to select different color themes and font settings for the GUI.
 *   **Settings/Preferences UI:** Add a dedicated UI for configuring application settings.
+*   **Improved Output Formatting:** Enhance output readability with syntax highlighting or clickable elements.
