@@ -1,6 +1,7 @@
 //! This module provides the core shell functionality, including command execution,
 //! directory management, and built-in commands like `ls`, `ping`, and `cd`.
 
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use crate::shell::features::git::{self, GitInfo};
@@ -12,8 +13,9 @@ pub mod external;
 /// `ShellCore` manages the shell's state, including the current working directory
 /// and provides methods for executing commands.
 pub struct ShellCore {
-    current_dir: PathBuf,
+    pub current_dir: PathBuf,
     pub git_info: Option<GitInfo>,
+    pub aliases: HashMap<String, String>,
 }
 
 impl ShellCore {
@@ -23,6 +25,7 @@ impl ShellCore {
         let mut core = Self {
             current_dir: dunce::canonicalize(env::current_dir().unwrap()).unwrap(),
             git_info: None,
+            aliases: HashMap::new(),
         };
         core.update_git_info();
         core
@@ -56,7 +59,7 @@ impl ShellCore {
     ///
     /// A `String` containing the output of the executed command.
     pub async fn execute_shell_command(&mut self, command_str: &str) -> String {
-        let result = command_executor::execute_shell_command(&mut self.current_dir, command_str).await;
+        let result = command_executor::execute_shell_command(self, command_str).await;
         // After a command, especially `cd`, the git info might have changed.
         self.update_git_info();
         result

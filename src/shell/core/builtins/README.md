@@ -10,16 +10,19 @@ To encapsulate the logic for commands that are fundamental to the shell's operat
 
 The following built-in commands are currently implemented:
 
+*   `alias`: Creates, displays, or removes command aliases. Supports `alias name=value` to create, `alias` to list all, and `unalias name` to remove.
 *   `cd`: Changes the current working directory.
-*   `ls`: Lists the contents of a directory.
-*   `ping`: Sends ICMP echo requests to network hosts.
+*   `cp`: Copies files.
+*   `echo`: Displays a line of text.
+*   `grep`: Searches for patterns in text.
+*   `ls`: Lists the contents of a directory, with support for `-l` (long listing) and `-a` (all files) flags.
+*   `mkdir`: Creates new directories.
+*   `mv`: Moves (renames) files and directories.
 *   `open`: Opens files and directories with their default applications.
+*   `ping`: Sends ICMP echo requests to network hosts.
+*   `rm`: Removes files and directories.
 
 ## To-Dos
 
-*   `ls`: Lists the contents of a directory with support for `-l` (long listing) and `-a` (all files) flags.
-*   `mkdir`: Create a built-in command for creating new directories.
-*   `rm`: Removes files and directories.
-*   `cp`: Copies files (recursive copy for directories not yet implemented).
-*   `mv`: Moves (renames) files and directories.
 *   **Error Handling Refinement:** Improve error messages and handling for built-in commands to provide more user-friendly feedback.
+*   **Feature Expansion:** Consider adding more complex features to existing commands, such as recursive copy for `cp`.
