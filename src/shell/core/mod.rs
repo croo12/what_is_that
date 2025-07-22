@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use crate::shell::features::git::{self, GitInfo};
+use crate::shell::features::git::GitInfo;
 
 pub mod builtins;
 pub mod command_executor;
@@ -16,6 +16,7 @@ pub struct ShellCore {
     pub current_dir: PathBuf,
     pub git_info: Option<GitInfo>,
     pub aliases: HashMap<String, String>,
+    pub env_vars: HashMap<String, String>,
 }
 
 impl ShellCore {
@@ -26,6 +27,7 @@ impl ShellCore {
             current_dir: dunce::canonicalize(env::current_dir().unwrap()).unwrap(),
             git_info: None,
             aliases: HashMap::new(),
+            env_vars: HashMap::new(),
         };
         core.update_git_info();
         core

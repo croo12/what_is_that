@@ -15,7 +15,9 @@ The following built-in commands are currently implemented:
 *   `cd`: Changes the current working directory.
 *   `cp`: Copies files.
 *   `echo`: Displays a line of text.
+*   `export`: Sets or displays environment variables.
 *   `grep`: Searches for patterns in text.
+*   `unset`: Removes environment variables.
 *   `ls`: Lists the contents of a directory, with support for `-l` (long listing) and `-a` (all files) flags.
 *   `mkdir`: Creates new directories.
 *   `mv`: Moves (renames) files and directories.

@@ -2562,6 +2562,7 @@ dependencies = [
  "open",
  "pnet",
  "raw-window-handle 0.5.2",
+ "regex",
  "rfd",
  "shlex",
  "tempfile",

@@ -59,9 +59,9 @@ fn has_uncommitted_changes(repo: &Repository) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::{self, File};
+    use std::fs::File;
     use std::io::Write;
-    use git2::{Repository, Signature, Oid};
+    use git2::{Repository, Signature};
 
     // Helper to create a temporary git repository for testing
     fn create_test_repo(path: &Path) -> Repository {

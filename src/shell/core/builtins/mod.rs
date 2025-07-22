@@ -10,3 +10,5 @@ pub mod echo;
 pub mod grep;
 pub mod alias;
 pub mod cat;
+pub mod export;
+pub mod unset;

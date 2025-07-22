@@ -3,7 +3,6 @@
 use anyhow::{anyhow, Context, Result};
 use std::fs::File;
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
 use std::process::Stdio;
 use crate::shell::core::builtins;
 use crate::shell::core::ShellCore;
@@ -58,7 +57,7 @@ fn parse_line(line: &str) -> Result<Pipeline, String> {
 
 async fn execute_pipeline_async(shell_core: &mut ShellCore, pipeline: Pipeline) -> Result<String> {
     let mut input_data = Vec::new();
-    let mut final_output = String::new();
+    let mut last_command_output: Option<Vec<u8>> = None;
 
     let Pipeline { commands, redirection } = pipeline;
     let num_commands = commands.len();
@@ -67,71 +66,42 @@ async fn execute_pipeline_async(shell_core: &mut ShellCore, pipeline: Pipeline) 
         let is_last_command = i == num_commands - 1;
         let args: Vec<&str> = command.args.iter().map(AsRef::as_ref).collect();
 
-        let output_data = match command.name.as_str() {
-            // Built-ins that produce stdout
-            "ls" => builtins::ls::ls_builtin(&shell_core.current_dir, &args).await.into_bytes(),
-            "echo" => builtins::echo::echo_builtin(&args).await.into_bytes(),
-            "ping" => builtins::ping::ping_builtin(&args).await.into_bytes(),
+        let command_result_str = match command.name.as_str() {
+            "ls" => Ok(builtins::ls::ls_builtin(&shell_core.current_dir, &args).await),
+            "echo" => Ok(builtins::echo::echo_builtin(&args, &shell_core.env_vars).await),
+            "ping" => Ok(builtins::ping::ping_builtin(&args).await),
             "grep" => {
                 let cursor = Cursor::new(input_data.clone());
-                builtins::grep::grep_builtin(&args, Box::new(cursor)).await?.into_bytes()
+                builtins::grep::grep_builtin(&args, Box::new(cursor)).await
             }
-            "cat" => {
-                match builtins::cat::cat_builtin(&shell_core.current_dir, &args).await {
-                    Ok(output) => output.into_bytes(),
-                    Err(e) => return Err(e),
-                }
-            }
-            "alias" if i == 0 => {
-                final_output = builtins::alias::alias_builtin(&mut shell_core.aliases, &args);
-                Vec::new()
-            }
-            "unalias" if i == 0 => {
-                // The alias_builtin expects "unalias" as the first argument.
+            "cat" => builtins::cat::cat_builtin(&shell_core.current_dir, &args).await,
+            "alias" => Ok(builtins::alias::alias_builtin(&mut shell_core.aliases, &args)),
+            "unalias" => {
                 let mut unalias_args = vec!["unalias"];
                 unalias_args.extend_from_slice(&args);
-                final_output = builtins::alias::alias_builtin(&mut shell_core.aliases, &unalias_args);
-                Vec::new()
+                Ok(builtins::alias::alias_builtin(&mut shell_core.aliases, &unalias_args))
             }
-            
-            // Built-ins that modify state but don't pipe stdout
-            "cd" if i == 0 => {
-                let result = builtins::cd::cd_builtin(&mut shell_core.current_dir, &args).await;
-                if !result.is_empty() {
-                    // If cd returns anything, it's an error message.
-                    return Ok(result);
-                }
-                Vec::new()
-            }
-            "open" if i == 0 => {
-                final_output = builtins::open::open_builtin(&shell_core.current_dir, &args).await;
-                Vec::new()
-            }
-            "mkdir" if i == 0 => {
-                final_output = builtins::mkdir::mkdir_builtin(&shell_core.current_dir, &args).await;
-                Vec::new()
-            }
-            "rm" if i == 0 => {
-                final_output = builtins::rm::rm_builtin(&shell_core.current_dir, &args).await;
-                Vec::new()
-            }
-            "cp" if i == 0 => {
-                final_output = builtins::cp::cp_builtin(&shell_core.current_dir, &args).await;
-                Vec::new()
-            }
-            "mv" if i == 0 => {
-                final_output = builtins::mv::mv_builtin(&shell_core.current_dir, &args).await;
-                Vec::new()
-            }
-
-            // External commands
+            "export" => Ok(builtins::export::export_builtin(&mut shell_core.env_vars, &args)),
+            "unset" => Ok(builtins::unset::unset_builtin(&mut shell_core.env_vars, &args)),
+            "cd" => Ok(builtins::cd::cd_builtin(&mut shell_core.current_dir, &args).await),
+            "open" => Ok(builtins::open::open_builtin(&shell_core.current_dir, &args).await),
+            "mkdir" => Ok(builtins::mkdir::mkdir_builtin(&shell_core.current_dir, &args).await),
+            "rm" => Ok(builtins::rm::rm_builtin(&shell_core.current_dir, &args).await),
+            "cp" => Ok(builtins::cp::cp_builtin(&shell_core.current_dir, &args).await),
+            "mv" => Ok(builtins::mv::mv_builtin(&shell_core.current_dir, &args).await),
             _ => {
+                // External commands
                 let mut cmd = TokioCommand::new(&command.name);
                 cmd.args(&command.args)
                    .current_dir(&shell_core.current_dir)
                    .stdin(Stdio::piped())
                    .stdout(Stdio::piped())
                    .stderr(Stdio::piped());
+
+                // Set environment variables for the external command
+                for (key, value) in &shell_core.env_vars {
+                    cmd.env(key, value);
+                }
 
                 let mut child = match cmd.spawn() {
                     Ok(child) => child,
@@ -150,25 +120,28 @@ async fn execute_pipeline_async(shell_core: &mut ShellCore, pipeline: Pipeline) 
                 if !output.status.success() {
                     return Err(anyhow!(String::from_utf8_lossy(&output.stderr).into_owned()));
                 }
-                output.stdout
+                return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
             }
         };
+
+        let output_str = command_result_str?;
+        let current_command_output_bytes = output_str.into_bytes();
 
         if is_last_command {
             if let Some(Redirection::ToFile(ref filename)) = redirection {
                 let mut file = File::create(shell_core.current_dir.join(filename))
                     .context("Failed to create redirection file")?;
-                file.write_all(&output_data)?;
-                final_output = String::new();
+                file.write_all(&current_command_output_bytes)?;
+                last_command_output = Some(Vec::new()); // No output to stdout if redirected
             } else {
-                final_output = String::from_utf8_lossy(&output_data).into_owned();
+                last_command_output = Some(current_command_output_bytes);
             }
         } else {
-            input_data = output_data;
+            input_data = current_command_output_bytes;
         }
     }
 
-    Ok(final_output)
+    Ok(last_command_output.map_or(String::new(), |bytes| String::from_utf8_lossy(&bytes).into_owned()))
 }
 
 pub async fn execute_shell_command(shell_core: &mut ShellCore, command_str: &str) -> String {
@@ -204,7 +177,7 @@ pub async fn execute_shell_command(shell_core: &mut ShellCore, command_str: &str
 mod tests {
     use super::*;
     use crate::shell::core::ShellCore;
-    use std::env;
+    
     use std::fs;
     use tokio::io;
 
@@ -274,6 +247,40 @@ mod tests {
         let command = "echo 'hello \"world\"' | grep 'hello \"world\"'";
         let output = execute_shell_command(&mut shell_core, command).await;
         assert_eq!(output.trim(), "hello \"world\"");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_env_var_management() -> io::Result<()> {
+        let mut shell_core = ShellCore::new();
+
+        // 1. Set an environment variable
+        let output = execute_shell_command(&mut shell_core, "export MY_VAR=test_value").await;
+        assert!(output.is_empty());
+
+        println!("DEBUG: output: {}", output);
+
+        // 2. Check if it's listed by `export`
+        let output = execute_shell_command(&mut shell_core, "export").await;
+        println!("DEBUG: Output from 'export': '{}'", output);
+        assert!(output.contains("export MY_VAR=test_value"));
+
+        // 3. Check if `echo` expands it correctly
+        let output = execute_shell_command(&mut shell_core, "echo %MY_VAR%").await;
+        assert_eq!(output.trim(), "test_value");
+
+        // 4. Unset the environment variable
+        let output = execute_shell_command(&mut shell_core, "unset MY_VAR").await;
+        assert!(output.is_empty());
+
+        // 5. Check if it's no longer listed by `export`
+        let output = execute_shell_command(&mut shell_core, "export").await;
+        assert!(!output.contains("export MY_VAR=test_value"));
+
+        // 6. Check if `echo` no longer expands it
+        let output = execute_shell_command(&mut shell_core, "echo %MY_VAR%").await;
+        assert_eq!(output.trim(), "%MY_VAR%");
+
         Ok(())
     }
 }
